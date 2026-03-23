@@ -44,8 +44,8 @@ export default function RegisterPage() {
           setSuccess(true);
           toast.success("Registration submitted!");
         } else {
-          setError(result.error ?? "Registration failed");
-          if (result.errors) setFieldErrors(result.errors);
+          setError((result as any).error ?? "Registration failed");
+          if ((result as any).errors) setFieldErrors((result as any).errors);
           // If doc creation failed, clean up the Auth user to avoid orphans
           try { await credential.user.delete(); } catch { /* ignore */ }
         }
