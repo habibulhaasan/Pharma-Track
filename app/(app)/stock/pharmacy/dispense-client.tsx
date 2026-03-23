@@ -1,7 +1,5 @@
 "use client";
 // app/(app)/stock/pharmacy/dispense-client.tsx
-// Bulk dispense: all pharmacy products listed.
-// Enter qty for items dispensed. Rows with 0 skipped.
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Pill, Save, User } from "lucide-react";
@@ -41,8 +39,8 @@ export function DispenseClient({ products }: { products: Product[] }) {
 
   const filtered = products.filter(
     (p) =>
-      p.genericName.toLowerCase().includes(search.toLowerCase()) ||
-      p.brandName.toLowerCase().includes(search.toLowerCase())
+      p.brandName.toLowerCase().includes(search.toLowerCase()) ||
+      p.genericName.toLowerCase().includes(search.toLowerCase())
   );
 
   function handleSubmit(e: React.FormEvent) {
@@ -51,7 +49,7 @@ export function DispenseClient({ products }: { products: Product[] }) {
 
     const overStock = toDispense.filter((p) => parseInt(quantities[p.id], 10) > p.pharmacyStock);
     if (overStock.length > 0) {
-      toast.error(`Insufficient pharmacy stock: ${overStock.map((p) => p.genericName).join(", ")}`);
+      toast.error(`Insufficient stock: ${overStock.map((p) => p.brandName).join(", ")}`);
       return;
     }
 
@@ -69,15 +67,13 @@ export function DispenseClient({ products }: { products: Product[] }) {
         toast.success(`Dispensed: ${d.succeeded} medicine${d.succeeded !== 1 ? "s" : ""}`);
         if (d.failed?.length > 0) toast.error(`${d.failed.length} item(s) failed`);
         setQuantities((prev) => { const n = { ...prev }; products.forEach((p) => (n[p.id] = "")); return n; });
-        setPatientName("");
-        setPrescriptionNo("");
+        setPatientName(""); setPrescriptionNo("");
       } else {
         toast.error((result as any).error ?? "Dispense failed");
       }
     });
   }
 
-  // Grand total
   const grandTotal = toDispense.reduce((sum, p) => {
     return sum + (parseInt(quantities[p.id], 10) || 0) * (parseFloat(prices[p.id]) || 0);
   }, 0);
@@ -96,17 +92,17 @@ export function DispenseClient({ products }: { products: Product[] }) {
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
               className="h-8 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
           </div>
-          <div className="space-y-1 min-w-[150px]">
+          <div className="space-y-1 flex-1 min-w-[130px]">
             <label className="text-xs font-medium text-muted-foreground">Patient Name</label>
             <input type="text" placeholder="Optional" value={patientName} onChange={(e) => setPatientName(e.target.value)}
               className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
           </div>
-          <div className="space-y-1 min-w-[130px]">
+          <div className="space-y-1 flex-1 min-w-[120px]">
             <label className="text-xs font-medium text-muted-foreground">Prescription No.</label>
             <input type="text" placeholder="Optional" value={prescriptionNo} onChange={(e) => setPrescriptionNo(e.target.value)}
               className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
           </div>
-          <div className="flex-1 space-y-1 min-w-[160px]">
+          <div className="flex-1 space-y-1 min-w-[130px]">
             <label className="text-xs font-medium text-muted-foreground">Search</label>
             <input type="text" placeholder="Filter medicines…" value={search} onChange={(e) => setSearch(e.target.value)}
               className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
@@ -114,7 +110,7 @@ export function DispenseClient({ products }: { products: Product[] }) {
           <div className="flex items-center justify-between gap-2 sm:ml-auto sm:justify-end">
             {filledCount > 0 && <span className="text-xs text-muted-foreground">{filledCount} item{filledCount !== 1 ? "s" : ""}</span>}
             <Button type="submit" loading={isPending} disabled={filledCount === 0} className="gap-1.5">
-              <Save className="h-4 w-4" />Confirm Dispense
+              <Save className="h-4 w-4" />Dispense
             </Button>
           </div>
         </div>
@@ -124,12 +120,12 @@ export function DispenseClient({ products }: { products: Product[] }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/40">
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-8">#</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase">Medicine</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-28">In Stock</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-24">Qty OUT</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-28 hidden md:table-cell">Price</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-28 hidden md:table-cell">Total</th>
+                  <th className="px-2 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-6">#</th>
+                  <th className="px-2 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase">Medicine</th>
+                  <th className="px-2 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-16">Stock</th>
+                  <th className="px-2 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-16">Qty</th>
+                  <th className="px-2 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-20 hidden md:table-cell">Price</th>
+                  <th className="px-2 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-20 hidden md:table-cell">Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -140,17 +136,20 @@ export function DispenseClient({ products }: { products: Product[] }) {
                   const over = qty > product.pharmacyStock;
                   return (
                     <tr key={product.id} className={`border-b last:border-0 transition-colors ${over ? "bg-destructive/5" : hasQty ? "bg-primary/5" : "hover:bg-muted/20"}`}>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{idx + 1}</td>
-                      <td className="px-3 py-2">
-                        <p className="font-medium text-sm">{product.brandName}</p>
-                        <p className="text-xs text-muted-foreground">{product.genericName}</p>
+                      <td className="px-2 py-2 text-xs text-muted-foreground">{idx + 1}</td>
+                      <td className="px-2 py-2 max-w-[120px] sm:max-w-none">
+                        <p className="font-medium text-xs sm:text-sm truncate">{product.brandName}</p>
+                        <p className="hidden sm:block text-xs text-muted-foreground truncate">{product.genericName}</p>
                       </td>
-                      <td className="px-3 py-2">
-                        <span className={`text-sm font-medium tabular-nums ${product.pharmacyStock === 0 ? "text-destructive" : product.pharmacyStock <= product.reorderLevel ? "text-warning" : ""}`}>
-                          {product.pharmacyStock}<span className="ml-0.5 text-xs text-muted-foreground font-normal">{product.unit}</span>
+                      <td className="px-2 py-2 whitespace-nowrap">
+                        <span className={`text-xs font-medium tabular-nums ${
+                          product.pharmacyStock === 0 ? "text-destructive" : product.pharmacyStock <= product.reorderLevel ? "text-warning" : ""
+                        }`}>
+                          {product.pharmacyStock}
+                          <span className="ml-0.5 text-muted-foreground font-normal text-[10px]">{product.unit}</span>
                         </span>
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-2">
                         <input type="number" min="0" max={product.pharmacyStock} value={quantities[product.id]} placeholder="0"
                           disabled={product.pharmacyStock === 0}
                           onChange={(e) => setQuantities((prev) => ({ ...prev, [product.id]: e.target.value }))}
@@ -163,17 +162,17 @@ export function DispenseClient({ products }: { products: Product[] }) {
                             }
                           }}
                           data-disp-qty
-                          className={`h-8 w-20 rounded-md border bg-background px-2 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40 ${over ? "border-destructive" : hasQty ? "border-primary" : "border-input"}`}
+                          className={`h-8 w-14 sm:w-20 rounded-md border bg-background px-2 text-xs sm:text-sm tabular-nums focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40 ${over ? "border-destructive" : hasQty ? "border-primary" : "border-input"}`}
                         />
                         {over && <p className="text-[10px] text-destructive mt-0.5">Max {product.pharmacyStock}</p>}
                       </td>
-                      <td className="px-3 py-2 hidden md:table-cell">
+                      <td className="px-2 py-2 hidden md:table-cell">
                         <input type="number" min="0" step="0.01" value={prices[product.id]}
                           onChange={(e) => setPrices((prev) => ({ ...prev, [product.id]: e.target.value }))}
-                          className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+                          className="h-8 w-20 rounded-md border border-input bg-background px-2 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
                       </td>
-                      <td className="px-3 py-2 hidden md:table-cell">
-                        <span className="text-sm tabular-nums text-muted-foreground">
+                      <td className="px-2 py-2 hidden md:table-cell">
+                        <span className="text-xs tabular-nums text-muted-foreground">
                           {hasQty ? (qty * price).toFixed(2) : "—"}
                         </span>
                       </td>
@@ -184,13 +183,12 @@ export function DispenseClient({ products }: { products: Product[] }) {
                   <tr><td colSpan={6} className="py-10 text-center text-sm text-muted-foreground">No medicines found.</td></tr>
                 )}
               </tbody>
-              {/* Grand total row */}
               {filledCount > 0 && (
                 <tfoot>
-                  <tr className="border-t bg-muted/40">
-                    <td colSpan={4} className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground uppercase">Grand Total</td>
-                    <td className="px-3 py-2 hidden md:table-cell"></td>
-                    <td className="px-3 py-2 hidden md:table-cell">
+                  <tr className="border-t-2 border-border bg-muted/40">
+                    <td colSpan={4} className="px-2 py-2 text-right text-xs font-semibold text-muted-foreground uppercase">Grand Total</td>
+                    <td className="px-2 py-2 hidden md:table-cell" />
+                    <td className="px-2 py-2 hidden md:table-cell">
                       <span className="text-sm font-semibold tabular-nums">{grandTotal.toFixed(2)}</span>
                     </td>
                   </tr>
