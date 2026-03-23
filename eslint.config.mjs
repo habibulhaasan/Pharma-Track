@@ -14,9 +14,7 @@ const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
     rules: {
-      // Allow any for Firestore data shapes
       "@typescript-eslint/no-explicit-any": "warn",
-      // Allow unused vars with _ prefix
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
     },
   },

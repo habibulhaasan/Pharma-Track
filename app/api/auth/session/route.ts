@@ -1,10 +1,8 @@
 // app/api/auth/session/route.ts
-// This route runs in Node.js runtime (not Edge) — firebase-admin is safe here.
 import { NextRequest, NextResponse } from "next/server";
-import { createSession, setSessionCookie, clearSession } from "@/lib/auth";
+import { setSessionCookie, clearSession } from "@/lib/auth";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 
-// Force Node.js runtime explicitly (not Edge)
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
@@ -29,8 +27,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const sessionCookie = await createSession(idToken);
-    await setSessionCookie(sessionCookie);
+    await setSessionCookie(idToken);
 
     return NextResponse.json({
       success: true,
