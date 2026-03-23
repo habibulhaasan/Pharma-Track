@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Package, ArrowLeftRight, Pill,
   BarChart3, Users, LogOut, ChevronRight, ShieldCheck,
-  Boxes, ClipboardList, Settings,
+  Boxes, ClipboardList, Settings, History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/app/actions/auth";
@@ -22,7 +22,8 @@ const navItems = [
   { href: "/reports",                label: "Reports",         icon: BarChart3,    adminOnly: true },
   { href: "/admin",                  label: "Admin Panel",     icon: ShieldCheck,  adminOnly: true },
   { href: "/admin/users",            label: "Users",           icon: Users,        adminOnly: true },
-  { href: "/admin/stock-adjustment", label: "Adjustments",     icon: Settings,     adminOnly: true },
+  { href: "/admin/stock-adjustment",   label: "Adjustments",     icon: Settings,     adminOnly: true },
+  { href: "/admin/adjustment-history", label: "Adj. History",    icon: History,      adminOnly: true },
 ];
 
 interface SidebarProps {

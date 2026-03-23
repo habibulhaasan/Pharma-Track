@@ -1,6 +1,7 @@
 "use client";
 // app/(app)/stock/pharmacy/dispense-client.tsx
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Pill, Save, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ export function DispenseClient({ products }: { products: Product[] }) {
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [search, setSearch] = useState("");
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
 
   const toDispense = products.filter((p) => parseFloat(quantities[p.id]) > 0);
   const filledCount = toDispense.length;
@@ -68,6 +70,7 @@ export function DispenseClient({ products }: { products: Product[] }) {
         if (d.failed?.length > 0) toast.error(`${d.failed.length} item(s) failed`);
         setQuantities((prev) => { const n = { ...prev }; products.forEach((p) => (n[p.id] = "")); return n; });
         setPatientName(""); setPrescriptionNo("");
+        router.refresh();
       } else {
         toast.error((result as any).error ?? "Dispense failed");
       }

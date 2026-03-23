@@ -1,6 +1,7 @@
 "use client";
 // app/(app)/stock/main/stock-main-client.tsx
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Boxes, AlertTriangle, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ export function StockMainClient({ products }: { products: Product[]; isAdmin: bo
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [search, setSearch] = useState("");
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
 
   function setField(id: string, field: keyof RowState, value: string) {
     setRows((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
@@ -78,6 +80,7 @@ export function StockMainClient({ products }: { products: Product[]; isAdmin: bo
           products.forEach((p) => { next[p.id] = { ...next[p.id], quantity: "", batch: "", expiry: "" }; });
           return next;
         });
+        router.refresh();
       } else {
         toast.error((result as any).error ?? "Failed to add stock");
       }

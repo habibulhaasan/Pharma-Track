@@ -1,6 +1,7 @@
 "use client";
 // app/(app)/stock/transfer/transfer-client.tsx
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeftRight, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ export function TransferClient({ products }: { products: Product[] }) {
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [search, setSearch] = useState("");
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
 
   const toTransfer = products.filter((p) => parseFloat(quantities[p.id]) > 0);
   const filledCount = toTransfer.length;
@@ -69,6 +71,7 @@ export function TransferClient({ products }: { products: Product[] }) {
       if (failed.length > 0) toast.error(`Failed: ${failed.join(", ")}`);
       setQuantities((prev) => { const n = { ...prev }; products.forEach((p) => (n[p.id] = "")); return n; });
       setBatches((prev) => { const n = { ...prev }; products.forEach((p) => (n[p.id] = "")); return n; });
+      router.refresh();
     });
   }
 

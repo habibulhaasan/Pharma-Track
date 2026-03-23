@@ -1,6 +1,7 @@
 // app/(app)/admin/stock-adjustment/adjustment-client.tsx
 "use client";
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Settings, AlertTriangle } from "lucide-react";
 import { DataTable } from "@/components/tables/data-table";
@@ -29,6 +30,7 @@ export function StockAdjustmentClient({ products }: { products: Product[] }) {
   const [newQty, setNewQty] = useState("");
   const [reason, setReason] = useState("");
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
 
   function openAdjust(product: Product) {
     setSelected(product);
@@ -57,6 +59,7 @@ export function StockAdjustmentClient({ products }: { products: Product[] }) {
         const data = result.data as any;
         toast.success(`Stock adjusted: ${data.beforeQty} → ${data.afterQty} ${selected.unit}`);
         setOpen(false);
+        router.refresh();
       } else {
         toast.error((result as any).error ?? "Adjustment failed");
       }
@@ -122,7 +125,8 @@ export function StockAdjustmentClient({ products }: { products: Product[] }) {
             <DialogDescription>This creates a permanent ADJUSTMENT ledger entry.</DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-3 py-2">
+          <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden">
+            <div className="overflow-y-auto px-6 py-4 space-y-4 flex-1 scrollbar-thin">
             <div className="space-y-1.5">
               <Label>Stock Type</Label>
               <Select
@@ -169,7 +173,8 @@ export function StockAdjustmentClient({ products }: { products: Product[] }) {
               <p className="text-xs text-muted-foreground text-right">{reason.length}/500</p>
             </div>
 
-            <DialogFooter className="pt-2">
+            </div>
+            <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
               <Button
                 type="submit"
