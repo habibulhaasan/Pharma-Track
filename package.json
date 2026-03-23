@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "seed": "npx ts-node --project tsconfig.seed.json scripts/seed.ts"
+    "seed": "npx ts-node --project tsconfig.seed.json scripts/seed.ts",
+    "migrate": "npx ts-node --project tsconfig.seed.json scripts/migrate.ts"
   },
   "dependencies": {
     "next": "^15.3.3",
@@ -36,7 +37,8 @@
     "@hookform/resolvers": "^5.0.1",
     "sonner": "^2.0.5",
     "next-themes": "^0.4.6",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "@opentelemetry/api": "^1.9.0"
   },
   "devDependencies": {
     "@types/node": "^22",
