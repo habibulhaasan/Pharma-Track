@@ -15,9 +15,9 @@ import { useTransition } from "react";
 const navItems = [
   { href: "/dashboard",              label: "Dashboard",       icon: LayoutDashboard },
   { href: "/products",               label: "Products",        icon: Package },
-  { href: "/stock/main",             label: "Stock IN",        icon: Boxes },
-  { href: "/stock/transfer",         label: "To Pharmacy",     icon: ArrowLeftRight },
   { href: "/stock/pharmacy",         label: "Dispense",        icon: Pill },
+  { href: "/stock/transfer",         label: "Pharmacy IN",     icon: ArrowLeftRight }, 
+  { href: "/stock/main",             label: "Stock IN",        icon: Boxes },
   { href: "/ledger",                 label: "Ledger",          icon: ClipboardList },
   { href: "/reports",                label: "Reports",         icon: BarChart3,    adminOnly: true },
   { href: "/admin",                  label: "Admin Panel",     icon: ShieldCheck,  adminOnly: true },
