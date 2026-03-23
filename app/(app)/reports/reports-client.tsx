@@ -59,8 +59,8 @@ export function ReportsClient({ stockReport, expiryReport }: ReportsClientProps)
       header: "Product",
       cell: (row: StockRow) => (
         <div>
-          <p className="font-medium text-sm">{row.genericName}</p>
-          <p className="text-xs text-muted-foreground">{row.brandName}</p>
+          <p className="font-medium text-sm">{row.brandName}</p>
+          <p className="text-xs text-muted-foreground">{row.genericName}</p>
         </div>
       ),
     },
