@@ -58,7 +58,7 @@ export function StockAdjustmentClient({ products }: { products: Product[] }) {
         toast.success(`Stock adjusted: ${data.beforeQty} → ${data.afterQty} ${selected.unit}`);
         setOpen(false);
       } else {
-        toast.error(result.error ?? "Adjustment failed");
+        toast.error((result as any).error ?? "Adjustment failed");
       }
     });
   }

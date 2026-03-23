@@ -28,30 +28,28 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
   const [isPending, startTransition] = useTransition();
   const isEdit = !!product;
 
-  // Controlled state for all fields
-  const [brandName, setBrandName]     = useState(product?.brandName ?? "");
-  const [genericName, setGenericName] = useState(product?.genericName ?? "");
-  const [type, setType]               = useState(product?.type ?? "");
-  const [company, setCompany]         = useState(product?.company ?? "");
-  const [unit, setUnit]               = useState(product?.unit ?? "piece");
+  const [brandName, setBrandName]       = useState(product?.brandName ?? "");
+  const [genericName, setGenericName]   = useState(product?.genericName ?? "");
+  const [type, setType]                 = useState(product?.type ?? "");
+  const [company, setCompany]           = useState(product?.company ?? "");
+  const [unit, setUnit]                 = useState(product?.unit ?? "piece");
   const [defaultPrice, setDefaultPrice] = useState(String(product?.defaultPrice ?? "0"));
   const [reorderLevel, setReorderLevel] = useState(String(product?.reorderLevel ?? "10"));
-  const [errors, setErrors]           = useState<Record<string, string>>({});
+  const [errors, setErrors]             = useState<Record<string, string>>({});
 
-  // Reset when dialog opens with new product
   function handleOpenChange(val: boolean) {
     if (val && product) {
       setBrandName(product.brandName ?? "");
       setGenericName(product.genericName ?? "");
       setType(product.type ?? "");
       setCompany(product.company ?? "");
-      setUnit(product.unit ?? "pcs");
+      setUnit(product.unit ?? "piece");
       setDefaultPrice(String(product.defaultPrice ?? "0"));
       setReorderLevel(String(product.reorderLevel ?? "10"));
     } else if (!val) {
       if (!isEdit) {
         setBrandName(""); setGenericName(""); setType("");
-        setCompany(""); setUnit("pcs");
+        setCompany(""); setUnit("piece");
         setDefaultPrice("0"); setReorderLevel("10");
       }
       setErrors({});
@@ -66,8 +64,10 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
     if (!type)               e.type        = "Type is required";
     if (!company.trim())     e.company     = "Company is required";
     if (!unit)               e.unit        = "Unit is required";
-    if (isNaN(parseFloat(defaultPrice)) || parseFloat(defaultPrice) < 0) e.defaultPrice = "Invalid price";
-    if (isNaN(parseInt(reorderLevel)) || parseInt(reorderLevel) < 0)     e.reorderLevel = "Invalid reorder level";
+    if (isNaN(parseFloat(defaultPrice)) || parseFloat(defaultPrice) < 0)
+      e.defaultPrice = "Invalid price";
+    if (isNaN(parseInt(reorderLevel)) || parseInt(reorderLevel) < 0)
+      e.reorderLevel = "Invalid reorder level";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -107,107 +107,117 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
           <DialogTitle>{isEdit ? "Edit Product" : "Add New Product"}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 px-6 py-4">
-
-          {/* Brand name — free text */}
-          <div className="space-y-1.5">
-            <Label>Brand Name *</Label>
-            <Input
-              value={brandName}
-              onChange={(e) => setBrandName(e.target.value)}
-              placeholder="Tab. Paracetamol"
-              error={errors.brandName}
-            />
-          </div>
-
-          {/* Generic name — searchable from 1695 generics */}
-          <div className="space-y-1.5">
-            <Label>Generic Name *</Label>
-            <Combobox
-              options={GENERICS}
-              value={genericName}
-              onChange={setGenericName}
-              placeholder="Search generic name…"
-              allowCustom
-              error={errors.genericName}
-            />
-          </div>
-
-          {/* Type + Unit */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Type *</Label>
-              <Select value={type} onValueChange={setType}>
-                <SelectTrigger className={errors.type ? "border-destructive" : ""}>
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRODUCT_TYPES.map((t) => (
-                    <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.type && <p className="text-xs text-destructive">{errors.type}</p>}
-            </div>
+        <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden">
+          {/* Scrollable body */}
+          <div className="overflow-y-auto px-6 py-4 space-y-4 flex-1 scrollbar-thin">
 
             <div className="space-y-1.5">
-              <Label>Unit *</Label>
-              <Select value={unit} onValueChange={setUnit}>
-                <SelectTrigger className={errors.unit ? "border-destructive" : ""}>
-                  <SelectValue placeholder="Select unit" />
-                </SelectTrigger>
-                <SelectContent>
-                  {UNITS.map((u) => (
-                    <SelectItem key={u} value={u}>{u}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.unit && <p className="text-xs text-destructive">{errors.unit}</p>}
-            </div>
-          </div>
-
-          {/* Company — searchable from 216 companies */}
-          <div className="space-y-1.5">
-            <Label>Company *</Label>
-            <Combobox
-              options={COMPANIES}
-              value={company}
-              onChange={setCompany}
-              placeholder="Search company…"
-              allowCustom
-              error={errors.company}
-            />
-          </div>
-
-          {/* Price + Reorder level */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Default Price</Label>
+              <Label>Brand Name *</Label>
               <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={defaultPrice}
-                onChange={(e) => setDefaultPrice(e.target.value)}
-                placeholder="0.00"
-                error={errors.defaultPrice}
+                value={brandName}
+                onChange={(e) => setBrandName(e.target.value)}
+                placeholder="Tab. Paracetamol"
+                error={errors.brandName}
               />
             </div>
+
             <div className="space-y-1.5">
-              <Label>Reorder Level</Label>
-              <Input
-                type="number"
-                min="0"
-                value={reorderLevel}
-                onChange={(e) => setReorderLevel(e.target.value)}
-                placeholder="10"
-                error={errors.reorderLevel}
+              <Label>Generic Name *</Label>
+              <Combobox
+                options={GENERICS}
+                value={genericName}
+                onChange={setGenericName}
+                placeholder="Search generic name…"
+                allowCustom
+                error={errors.genericName}
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Type *</Label>
+                <Select value={type} onValueChange={setType}>
+                  <SelectTrigger className={errors.type ? "border-destructive" : ""}>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRODUCT_TYPES.map((t: string) => (
+                      <SelectItem key={t} value={t} className="capitalize">
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.type && (
+                  <p className="text-xs text-destructive">{errors.type}</p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Unit *</Label>
+                <Select value={unit} onValueChange={setUnit}>
+                  <SelectTrigger className={errors.unit ? "border-destructive" : ""}>
+                    <SelectValue placeholder="Select unit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {UNITS.map((u: string) => (
+                      <SelectItem key={u} value={u}>
+                        {u}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.unit && (
+                  <p className="text-xs text-destructive">{errors.unit}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Company *</Label>
+              <Combobox
+                options={COMPANIES}
+                value={company}
+                onChange={setCompany}
+                placeholder="Search company…"
+                allowCustom
+                error={errors.company}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Default Price</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={defaultPrice}
+                  onChange={(e) => setDefaultPrice(e.target.value)}
+                  placeholder="0.00"
+                  error={errors.defaultPrice}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Reorder Level</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={reorderLevel}
+                  onChange={(e) => setReorderLevel(e.target.value)}
+                  placeholder="10"
+                  error={errors.reorderLevel}
+                />
+              </div>
             </div>
           </div>
 
-          <DialogFooter className="pt-2">
-            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" loading={isPending}>
