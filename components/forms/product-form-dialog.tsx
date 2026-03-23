@@ -1,6 +1,6 @@
 "use client";
 // components/forms/product-form-dialog.tsx
-import { useTransition, useState } from "react";
+import { useTransition, useState, useEffect } from "react";
 import { toast } from "sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -37,8 +37,9 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
   const [reorderLevel, setReorderLevel] = useState(String(product?.reorderLevel ?? "10"));
   const [errors, setErrors]             = useState<Record<string, string>>({});
 
-  function handleOpenChange(val: boolean) {
-    if (val && product) {
+  // Sync fields whenever dialog opens or product changes
+  useEffect(() => {
+    if (open && product) {
       setBrandName(product.brandName ?? "");
       setGenericName(product.genericName ?? "");
       setType(product.type ?? "");
@@ -46,14 +47,17 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
       setUnit(product.unit ?? "piece");
       setDefaultPrice(String(product.defaultPrice ?? "0"));
       setReorderLevel(String(product.reorderLevel ?? "10"));
-    } else if (!val) {
-      if (!isEdit) {
-        setBrandName(""); setGenericName(""); setType("");
-        setCompany(""); setUnit("piece");
-        setDefaultPrice("0"); setReorderLevel("10");
-      }
+      setErrors({});
+    } else if (open && !product) {
+      setBrandName(""); setGenericName(""); setType("");
+      setCompany(""); setUnit("piece");
+      setDefaultPrice("0"); setReorderLevel("10");
       setErrors({});
     }
+  }, [open, product]);
+
+  function handleOpenChange(val: boolean) {
+    if (!val) setErrors({});
     onOpenChange(val);
   }
 
@@ -108,7 +112,6 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden">
-          {/* Scrollable body */}
           <div className="overflow-y-auto px-6 py-4 space-y-4 flex-1 scrollbar-thin">
 
             <div className="space-y-1.5">
@@ -142,15 +145,11 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
                   </SelectTrigger>
                   <SelectContent>
                     {PRODUCT_TYPES.map((t: string) => (
-                      <SelectItem key={t} value={t} className="capitalize">
-                        {t}
-                      </SelectItem>
+                      <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.type && (
-                  <p className="text-xs text-destructive">{errors.type}</p>
-                )}
+                {errors.type && <p className="text-xs text-destructive">{errors.type}</p>}
               </div>
 
               <div className="space-y-1.5">
@@ -161,15 +160,11 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
                   </SelectTrigger>
                   <SelectContent>
                     {UNITS.map((u: string) => (
-                      <SelectItem key={u} value={u}>
-                        {u}
-                      </SelectItem>
+                      <SelectItem key={u} value={u}>{u}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.unit && (
-                  <p className="text-xs text-destructive">{errors.unit}</p>
-                )}
+                {errors.unit && <p className="text-xs text-destructive">{errors.unit}</p>}
               </div>
             </div>
 
@@ -189,9 +184,7 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
               <div className="space-y-1.5">
                 <Label>Default Price</Label>
                 <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                  type="number" step="0.01" min="0"
                   value={defaultPrice}
                   onChange={(e) => setDefaultPrice(e.target.value)}
                   placeholder="0.00"
@@ -201,8 +194,7 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
               <div className="space-y-1.5">
                 <Label>Reorder Level</Label>
                 <Input
-                  type="number"
-                  min="0"
+                  type="number" min="0"
                   value={reorderLevel}
                   onChange={(e) => setReorderLevel(e.target.value)}
                   placeholder="10"
@@ -213,11 +205,7 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
           </div>
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" loading={isPending}>
