@@ -1,17 +1,20 @@
 "use client";
 // components/forms/product-form-dialog.tsx
-import { useTransition, useRef } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useTransition, useState } from "react";
 import { toast } from "sonner";
-import { Upload } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 import { createProductAction, updateProductAction } from "@/app/actions/products";
-import { CreateProductSchema, ProductTypeSchema, type CreateProductInput } from "@/schemas/product";
+import { ProductTypeSchema } from "@/schemas/product";
+import { GENERICS, COMPANIES, UNITS } from "@/lib/product-data";
 
 const PRODUCT_TYPES = ProductTypeSchema.options;
 
@@ -25,12 +28,64 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
   const [isPending, startTransition] = useTransition();
   const isEdit = !!product;
 
-  const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<CreateProductInput>({
-    resolver: zodResolver(CreateProductSchema),
-    defaultValues: product ?? { reorderLevel: 10, defaultPrice: 0 },
-  });
+  // Controlled state for all fields
+  const [brandName, setBrandName]     = useState(product?.brandName ?? "");
+  const [genericName, setGenericName] = useState(product?.genericName ?? "");
+  const [type, setType]               = useState(product?.type ?? "");
+  const [company, setCompany]         = useState(product?.company ?? "");
+  const [unit, setUnit]               = useState(product?.unit ?? "piece");
+  const [defaultPrice, setDefaultPrice] = useState(String(product?.defaultPrice ?? "0"));
+  const [reorderLevel, setReorderLevel] = useState(String(product?.reorderLevel ?? "10"));
+  const [errors, setErrors]           = useState<Record<string, string>>({});
 
-  function onSubmit(data: CreateProductInput) {
+  // Reset when dialog opens with new product
+  function handleOpenChange(val: boolean) {
+    if (val && product) {
+      setBrandName(product.brandName ?? "");
+      setGenericName(product.genericName ?? "");
+      setType(product.type ?? "");
+      setCompany(product.company ?? "");
+      setUnit(product.unit ?? "pcs");
+      setDefaultPrice(String(product.defaultPrice ?? "0"));
+      setReorderLevel(String(product.reorderLevel ?? "10"));
+    } else if (!val) {
+      if (!isEdit) {
+        setBrandName(""); setGenericName(""); setType("");
+        setCompany(""); setUnit("pcs");
+        setDefaultPrice("0"); setReorderLevel("10");
+      }
+      setErrors({});
+    }
+    onOpenChange(val);
+  }
+
+  function validate() {
+    const e: Record<string, string> = {};
+    if (!brandName.trim())   e.brandName   = "Brand name is required";
+    if (!genericName.trim()) e.genericName = "Generic name is required";
+    if (!type)               e.type        = "Type is required";
+    if (!company.trim())     e.company     = "Company is required";
+    if (!unit)               e.unit        = "Unit is required";
+    if (isNaN(parseFloat(defaultPrice)) || parseFloat(defaultPrice) < 0) e.defaultPrice = "Invalid price";
+    if (isNaN(parseInt(reorderLevel)) || parseInt(reorderLevel) < 0)     e.reorderLevel = "Invalid reorder level";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!validate()) return;
+
+    const data = {
+      brandName:    brandName.trim(),
+      genericName:  genericName.trim(),
+      type:         type as any,
+      company:      company.trim(),
+      unit:         unit.trim(),
+      defaultPrice: parseFloat(defaultPrice),
+      reorderLevel: parseInt(reorderLevel, 10),
+    };
+
     startTransition(async () => {
       const result = isEdit
         ? await updateProductAction({ ...data, productId: product.id })
@@ -38,8 +93,7 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
 
       if (result.success) {
         toast.success(isEdit ? "Product updated" : "Product created");
-        onOpenChange(false);
-        reset();
+        handleOpenChange(false);
       } else {
         toast.error((result as any).error ?? "Something went wrong");
       }
@@ -47,72 +101,115 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Product" : "Add New Product"}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 px-6 py-4">
-          {/* Brand name first, then generic — as requested */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Brand Name *</Label>
-              <Input {...register("brandName")} placeholder="Napa" error={errors.brandName?.message} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Generic Name *</Label>
-              <Input {...register("genericName")} placeholder="Paracetamol" error={errors.genericName?.message} />
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-4 px-6 py-4">
+
+          {/* Brand name — free text */}
+          <div className="space-y-1.5">
+            <Label>Brand Name *</Label>
+            <Input
+              value={brandName}
+              onChange={(e) => setBrandName(e.target.value)}
+              placeholder="Tab. Paracetamol"
+              error={errors.brandName}
+            />
           </div>
 
+          {/* Generic name — searchable from 1695 generics */}
+          <div className="space-y-1.5">
+            <Label>Generic Name *</Label>
+            <Combobox
+              options={GENERICS}
+              value={genericName}
+              onChange={setGenericName}
+              placeholder="Search generic name…"
+              allowCustom
+              error={errors.genericName}
+            />
+          </div>
+
+          {/* Type + Unit */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Type *</Label>
-              <Select onValueChange={(v) => setValue("type", v as any)} defaultValue={product?.type}>
-                <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+              <Select value={type} onValueChange={setType}>
+                <SelectTrigger className={errors.type ? "border-destructive" : ""}>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
                 <SelectContent>
                   {PRODUCT_TYPES.map((t) => (
                     <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {errors.type && <p className="text-xs text-destructive">{errors.type.message}</p>}
+              {errors.type && <p className="text-xs text-destructive">{errors.type}</p>}
             </div>
+
             <div className="space-y-1.5">
               <Label>Unit *</Label>
-              <Input {...register("unit")} placeholder="strip, bottle, vial" error={errors.unit?.message} />
+              <Select value={unit} onValueChange={setUnit}>
+                <SelectTrigger className={errors.unit ? "border-destructive" : ""}>
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {UNITS.map((u) => (
+                    <SelectItem key={u} value={u}>{u}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.unit && <p className="text-xs text-destructive">{errors.unit}</p>}
             </div>
           </div>
 
+          {/* Company — searchable from 216 companies */}
           <div className="space-y-1.5">
             <Label>Company *</Label>
-            <Input {...register("company")} placeholder="Square Pharmaceuticals" error={errors.company?.message} />
+            <Combobox
+              options={COMPANIES}
+              value={company}
+              onChange={setCompany}
+              placeholder="Search company…"
+              allowCustom
+              error={errors.company}
+            />
           </div>
 
+          {/* Price + Reorder level */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Default Price *</Label>
+              <Label>Default Price</Label>
               <Input
-                {...register("defaultPrice", { valueAsNumber: true })}
-                type="number" step="0.01" min="0"
+                type="number"
+                step="0.01"
+                min="0"
+                value={defaultPrice}
+                onChange={(e) => setDefaultPrice(e.target.value)}
                 placeholder="0.00"
-                error={errors.defaultPrice?.message}
+                error={errors.defaultPrice}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Reorder Level *</Label>
+              <Label>Reorder Level</Label>
               <Input
-                {...register("reorderLevel", { valueAsNumber: true })}
-                type="number" min="0"
+                type="number"
+                min="0"
+                value={reorderLevel}
+                onChange={(e) => setReorderLevel(e.target.value)}
                 placeholder="10"
-                error={errors.reorderLevel?.message}
+                error={errors.reorderLevel}
               />
             </div>
           </div>
 
           <DialogFooter className="pt-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+              Cancel
+            </Button>
             <Button type="submit" loading={isPending}>
               {isEdit ? "Save Changes" : "Create Product"}
             </Button>

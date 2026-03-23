@@ -43,3 +43,29 @@ export function calculateStockValue(quantity: number, price: number): number {
 export function formatQuantity(quantity: number, unit: string): string {
   return `${quantity.toLocaleString()} ${unit}`;
 }
+
+// ─── Product sort order: Tablet → Capsule → Syrup → rest ─────────────────
+const TYPE_ORDER: Record<string, number> = {
+  tablet: 1,
+  capsule: 2,
+  syrup: 3,
+  injection: 4,
+  drops: 5,
+  cream: 6,
+  ointment: 7,
+  inhaler: 8,
+  patch: 9,
+  suppository: 10,
+  other: 11,
+};
+
+export function sortProducts<T extends { type?: string; brandName?: string; genericName?: string }>(
+  products: T[]
+): T[] {
+  return [...products].sort((a, b) => {
+    const orderA = TYPE_ORDER[a.type ?? ""] ?? 99;
+    const orderB = TYPE_ORDER[b.type ?? ""] ?? 99;
+    if (orderA !== orderB) return orderA - orderB;
+    return (a.brandName ?? "").localeCompare(b.brandName ?? "");
+  });
+}

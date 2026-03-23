@@ -121,10 +121,10 @@ export default async function DashboardPage() {
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">
-                          {item.genericName}
-                        </p>
-                        <p className="text-xs text-muted-foreground truncate">
                           {item.brandName}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.genericName}
                         </p>
                       </div>
                       <div className="ml-3">
