@@ -109,7 +109,7 @@ export function StockMainClient({ products }: { products: Product[]; isAdmin: bo
 
       <form onSubmit={handleSubmit} className="space-y-3">
         {/* Controls */}
-        <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-3">
+        <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 sm:flex-row sm:flex-wrap sm:items-end">
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Purchase Date</label>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
@@ -120,7 +120,7 @@ export function StockMainClient({ products }: { products: Product[]; isAdmin: bo
             <input type="text" placeholder="Filter by name…" value={search} onChange={(e) => setSearch(e.target.value)}
               className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2 sm:ml-auto sm:justify-end">
             {filledCount > 0 && (
               <span className="text-xs text-muted-foreground">{filledCount} item{filledCount !== 1 ? "s" : ""} to submit</span>
             )}

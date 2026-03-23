@@ -12,24 +12,28 @@ interface TopbarProps {
 
 export function Topbar({ title, onMenuClick }: TopbarProps) {
   const { theme, setTheme } = useTheme();
-  // Avoid hydration mismatch — only render theme toggle after mount
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-card px-4">
-      {onMenuClick && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="md:hidden"
-          onClick={onMenuClick}
-          aria-label="Toggle menu"
-        >
-          <Menu className="h-4 w-4" />
-        </Button>
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-card px-3 md:px-4">
+      {/* Hamburger — visible on mobile only */}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="md:hidden"
+        onClick={onMenuClick}
+        aria-label="Toggle menu"
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+
+      {/* App name on mobile (no title prop used on mobile) */}
+      <span className="text-sm font-semibold md:hidden">PharmaTrack</span>
+
+      {title && (
+        <h1 className="hidden md:block text-sm font-semibold">{title}</h1>
       )}
-      {title && <h1 className="text-sm font-semibold">{title}</h1>}
 
       <div className="ml-auto flex items-center gap-1">
         {mounted && (

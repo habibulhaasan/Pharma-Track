@@ -15,31 +15,42 @@ interface AppShellProps {
 export function AppShell({ children, userRole, userName, title }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  function closeSidebar() { setSidebarOpen(false); }
+
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Mobile backdrop */}
+    <div className="flex h-[100dvh] overflow-hidden bg-background">
+      {/* Mobile backdrop — tap to close */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
-          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={closeSidebar}
           aria-hidden="true"
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar — off-canvas on mobile, static on desktop */}
       <div
         className={cn(
-          "fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-in-out md:static md:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex-shrink-0",
+          "transition-transform duration-200 ease-in-out",
+          "md:static md:translate-x-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <Sidebar userRole={userRole} userName={userName} />
+        <Sidebar
+          userRole={userRole}
+          userName={userName}
+          onNavigate={closeSidebar}
+        />
       </div>
 
-      {/* Main */}
+      {/* Main content area */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <Topbar title={title} onMenuClick={() => setSidebarOpen((v) => !v)} />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 scrollbar-thin animate-fade-in">
+        <Topbar
+          title={title}
+          onMenuClick={() => setSidebarOpen((v) => !v)}
+        />
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-6 scrollbar-thin">
           {children}
         </main>
       </div>
