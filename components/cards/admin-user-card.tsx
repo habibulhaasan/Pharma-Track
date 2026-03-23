@@ -37,7 +37,7 @@ export function AdminUserCard({ user }: AdminUserCardProps) {
         toast.success(`${user.name} approved`);
         setLocalStatus("active");
       } else {
-        toast.error(result.error);
+        toast.error((result as any).error);
       }
     });
   }
@@ -49,7 +49,7 @@ export function AdminUserCard({ user }: AdminUserCardProps) {
         toast.success(`${user.name} disabled`);
         setLocalStatus("disabled");
       } else {
-        toast.error(result.error);
+        toast.error((result as any).error);
       }
     });
   }

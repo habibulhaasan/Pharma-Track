@@ -47,7 +47,7 @@ export default function LoginPage() {
           // freshly-set cookie.
           window.location.href = result.redirectTo ?? "/dashboard";
         } else {
-          setError(result.error ?? "Login failed");
+          setError((result as any).error ?? "Login failed");
         }
       } catch (err: any) {
         const code = err?.code ?? "";
