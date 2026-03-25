@@ -31,6 +31,9 @@ interface Entry {
   reason: string;
   userId: string;
   timestamp: string;
+  originalQuantity?: number;
+  editReason?: string;
+  editedBy?: string;
 }
 
 function formatTime(iso: string) {
@@ -287,7 +290,7 @@ export function InventoryClient({
                             {entry.quantity.toLocaleString()}
                             <span className="ml-0.5 text-xs text-muted-foreground">{entry.unit}</span>
                             {entry.originalQuantity !== undefined && (
-                              <span className="ml-1 text-[10px] text-muted-foreground line-through">{(entry as any).originalQuantity}</span>
+                              <span className="ml-1 text-[10px] text-muted-foreground line-through">{entry.originalQuantity}</span>
                             )}
                           </span>
                         )}
@@ -308,8 +311,8 @@ export function InventoryClient({
                             {entry.prescriptionNo && ` · Rx: ${entry.prescriptionNo}`}
                             {entry.batch && entry.batch !== "MIGRATED" && ` · Batch: ${entry.batch}`}
                             {entry.reason && entry.reason}
-                            {(entry as any).editReason && (
-                              <span className="text-warning"> · Edited: {(entry as any).editReason}</span>
+                            {entry.editReason && (
+                              <span className="text-warning"> · Edited: {entry.editReason}</span>
                             )}
                           </p>
                         )}
