@@ -259,7 +259,7 @@ export function InventoryClient({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40">
-                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-14">Time</th>
+                    {/* <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-14">Time</th> */}
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase">Product</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-24">Type</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-20">Qty</th>
@@ -287,9 +287,9 @@ export function InventoryClient({
                       return (
                         <tr key={`${entry.ledgerType}-${entry.id}`}
                           className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                          <td className="px-3 py-2.5">
+                          {/* <td className="px-3 py-2.5">
                             <span className="text-xs text-muted-foreground tabular-nums">{formatTime(entry.timestamp)}</span>
-                          </td>
+                          </td> */}
                           <td className="px-3 py-2.5 max-w-[130px] sm:max-w-none">
                             <p className="font-medium text-xs sm:text-sm truncate">{entry.brandName}</p>
                             <p className="hidden sm:block text-xs text-muted-foreground truncate">{entry.genericName}</p>
