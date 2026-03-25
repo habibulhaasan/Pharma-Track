@@ -11,7 +11,7 @@ export default async function InventoryPage() {
   const user = await getCurrentUser();
   const db = getAdminDb();
 
-  const [productsRaw] = await Promise.all([getAllProducts()]);
+  const productsRaw = await getAllProducts();
 
   const products = sortProducts(
     (productsRaw as any[]).map((p) => ({
@@ -54,7 +54,7 @@ export default async function InventoryPage() {
       products={products}
       activeDates={activeDates}
       isAdmin={user?.role === "admin"}
-      userId={user?.uid ?? ""}
+      userId={user?.id ?? ""}
     />
   );
 }
