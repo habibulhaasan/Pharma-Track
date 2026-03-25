@@ -23,38 +23,61 @@ export default async function InventoryPage() {
     }))
   );
 
-  // Fetch all transaction dates (last 365 days) from collectionGroup
-  // We get timestamps and extract unique dates
-  const [mainSnap, pharmSnap] = await Promise.all([
-    db.collectionGroup("mainLedger")
-      .orderBy("timestamp", "desc")
-      .limit(2000)
-      .get(),
-    db.collectionGroup("pharmacyLedger")
-      .orderBy("timestamp", "desc")
-      .limit(2000)
-      .get(),
-  ]);
+  // Collect dates per transaction type
+  const stockInDates = new Set<string>();
+  const transferDates = new Set<string>();
+  const dispenseDates = new Set<string>();
+  const allDates = new Set<string>();
 
-  // Collect unique dates that have data (YYYY-MM-DD)
-  const dateSet = new Set<string>();
+  try {
+    const [mainSnap, pharmSnap] = await Promise.all([
+      db.collectionGroup("mainLedger")
+        .orderBy("timestamp", "desc")
+        .limit(3000)
+        .get(),
+      db.collectionGroup("pharmacyLedger")
+        .orderBy("timestamp", "desc")
+        .limit(3000)
+        .get(),
+    ]);
 
-  for (const doc of [...mainSnap.docs, ...pharmSnap.docs]) {
-    const ts = doc.data().timestamp;
-    if (ts) {
+    for (const doc of mainSnap.docs) {
+      const data = doc.data();
+      const ts = data.timestamp;
+      if (!ts) continue;
       const d = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);
-      dateSet.add(d.toISOString().split("T")[0]);
+      const dateStr = d.toISOString().split("T")[0];
+      allDates.add(dateStr);
+
+      if (data.type === "IN") stockInDates.add(dateStr);
+      if (data.reference === "TRANSFER") transferDates.add(dateStr);
     }
+
+    for (const doc of pharmSnap.docs) {
+      const data = doc.data();
+      const ts = data.timestamp;
+      if (!ts) continue;
+      const d = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);
+      const dateStr = d.toISOString().split("T")[0];
+      allDates.add(dateStr);
+
+      if (data.reference === "DISPENSE") dispenseDates.add(dateStr);
+    }
+  } catch (err) {
+    console.error("Inventory index not ready:", err);
   }
 
-  const activeDates = Array.from(dateSet).sort().reverse();
+  const toSortedArray = (s: Set<string>) => Array.from(s).sort().reverse();
 
   return (
     <InventoryClient
       products={products}
-      activeDates={activeDates}
       isAdmin={user?.role === "admin"}
       userId={user?.id ?? ""}
+      allDates={toSortedArray(allDates)}
+      stockInDates={toSortedArray(stockInDates)}
+      transferDates={toSortedArray(transferDates)}
+      dispenseDates={toSortedArray(dispenseDates)}
     />
   );
 }
