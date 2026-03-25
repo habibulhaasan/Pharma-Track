@@ -55,6 +55,7 @@ export default async function InventoryPage() {
 
     for (const doc of pharmSnap.docs) {
       const data = doc.data();
+      if (data.reference === "TRANSFER") continue; // deduplicated — tracked via mainLedger
       const ts = data.timestamp;
       if (!ts) continue;
       const d = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);

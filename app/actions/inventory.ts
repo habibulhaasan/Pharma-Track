@@ -20,12 +20,12 @@ export async function getDayInventoryAction(date: string) {
       .where("timestamp", ">=", startTs)
       .where("timestamp", "<=", endTs)
       .orderBy("timestamp", "asc")
-      .get(),
+      .get().catch(() => ({ docs: [] })),
     db.collectionGroup("pharmacyLedger")
       .where("timestamp", ">=", startTs)
       .where("timestamp", "<=", endTs)
       .orderBy("timestamp", "asc")
-      .get(),
+      .get().catch(() => ({ docs: [] })),
     db.collection("products").get(),
   ]);
 
@@ -65,10 +65,33 @@ export async function getDayInventoryAction(date: string) {
     };
   }
 
-  const entries = [
+  const allEntries = [
     ...mainSnap.docs.map((d) => serialize(d, "main")),
     ...pharmSnap.docs.map((d) => serialize(d, "pharmacy")),
-  ].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  ];
+
+  // Deduplicate transfers: a transfer writes to both mainLedger (OUT/TRANSFER)
+  // and pharmacyLedger (IN/TRANSFER). Show only the main ledger side
+  // so it appears once as "Main → Pharmacy".
+  const pharmTransferIds = new Set(
+    pharmSnap.docs
+      .filter((d) => d.data().reference === "TRANSFER")
+      .map((d) => {
+        // Match by productId + approximate timestamp (within 5 seconds)
+        const ts = d.data().timestamp?.toDate?.()?.getTime() ?? 0;
+        const productId = d.ref.parent.parent?.id ?? "";
+        return `${productId}_${Math.floor(ts / 5000)}`;
+      })
+  );
+
+  const entries = allEntries
+    .filter((e) => {
+      // Keep pharmacy entries that are NOT transfers (i.e. dispense etc)
+      // Drop pharmacy TRANSFER entries — shown via main ledger side instead
+      if (e.ledgerType === "pharmacy" && e.reference === "TRANSFER") return false;
+      return true;
+    })
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
   return { success: true, data: entries };
 }

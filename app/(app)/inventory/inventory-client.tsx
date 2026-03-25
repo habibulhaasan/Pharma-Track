@@ -51,10 +51,8 @@ function formatTime(iso: string) {
 function getEntryMeta(entry: Entry) {
   if (entry.ledgerType === "main" && entry.type === "IN")
     return { label: "Stock IN", badgeVariant: "success" as const };
-  if (entry.ledgerType === "main" && entry.reference === "TRANSFER")
-    return { label: "To Pharmacy", badgeVariant: "secondary" as const };
-  if (entry.ledgerType === "pharmacy" && entry.reference === "TRANSFER")
-    return { label: "From Main", badgeVariant: "secondary" as const };
+  if (entry.reference === "TRANSFER")
+    return { label: "Main → Pharmacy", badgeVariant: "secondary" as const };
   if (entry.ledgerType === "pharmacy" && entry.reference === "DISPENSE")
     return { label: "Dispensed", badgeVariant: "critical" as const };
   if (entry.type === "ADJUSTMENT")
