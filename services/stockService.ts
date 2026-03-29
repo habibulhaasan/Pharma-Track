@@ -7,21 +7,31 @@ import { InsufficientStockError, NotFoundError } from "@/utils/errorHandler";
 import { logActivity } from "./ledgerService";
 import type { StockInInput, StockAdjustmentInput } from "@/schemas/stock";
 
+// Helper: convert a date string "YYYY-MM-DD" to a Firestore Timestamp at noon UTC
+// Falls back to server timestamp if no date provided
+function toTimestamp(dateStr?: string | null): Timestamp | ReturnType<typeof FieldValue.serverTimestamp> {
+  if (dateStr) {
+    // Use noon UTC of the selected date to avoid timezone edge cases
+    const d = new Date(dateStr + "T12:00:00.000Z");
+    if (!isNaN(d.getTime())) return Timestamp.fromDate(d);
+  }
+  return FieldValue.serverTimestamp() as any;
+}
+
 // ─── Stock IN (purchase received) ─────────────────────────────────────────
-export async function addMainStockIn(input: StockInInput, userId: string) {
+export async function addMainStockIn(input: StockInInput & { entryDate?: string }, userId: string) {
   const db = getAdminDb();
   const stockRef = db.collection("mainStock").doc(input.productId);
   const ledgerRef = stockRef.collection("mainLedger").doc();
   const expiryTimestamp = input.expiry ? Timestamp.fromDate(new Date(input.expiry)) : null;
+  const entryTimestamp = toTimestamp(input.entryDate);
 
   let beforeQty = 0;
   let afterQty = 0;
 
   await db.runTransaction(async (tx) => {
     const stockSnap = await tx.get(stockRef);
-    if (!stockSnap.exists) {
-      throw new NotFoundError("Product stock record");
-    }
+    if (!stockSnap.exists) throw new NotFoundError("Product stock record");
 
     beforeQty = stockSnap.data()!.quantity ?? 0;
     afterQty = beforeQty + input.quantity;
@@ -39,7 +49,7 @@ export async function addMainStockIn(input: StockInInput, userId: string) {
       price: input.price,
       supplier: input.supplier,
       reference: input.reference ?? "",
-      timestamp: FieldValue.serverTimestamp(),
+      timestamp: entryTimestamp,
       userId,
     });
   });
@@ -58,7 +68,7 @@ export async function addMainStockIn(input: StockInInput, userId: string) {
 
 // ─── Bulk Stock IN ─────────────────────────────────────────────────────────
 export async function bulkAddMainStockIn(
-  entries: StockInInput[],
+  entries: (StockInInput & { entryDate?: string })[],
   userId: string
 ) {
   const results = await Promise.allSettled(
@@ -85,6 +95,7 @@ export async function transferToPharmacy(
     batch: string;
     expiry?: string | null;
     notes?: string;
+    entryDate?: string;
   },
   userId: string
 ) {
@@ -94,6 +105,7 @@ export async function transferToPharmacy(
   const mainLedgerRef = mainStockRef.collection("mainLedger").doc();
   const pharmLedgerRef = pharmStockRef.collection("pharmacyLedger").doc();
   const expiryTimestamp = input.expiry ? Timestamp.fromDate(new Date(input.expiry)) : null;
+  const entryTimestamp = toTimestamp(input.entryDate);
 
   let beforeMainQty = 0;
   let afterMainQty = 0;
@@ -110,27 +122,21 @@ export async function transferToPharmacy(
     beforeMainQty = mainSnap.data()!.quantity ?? 0;
     const beforePharmQty = pharmSnap.data()!.quantity ?? 0;
 
-    // ⚠️  Critical: prevent negative main stock
     afterMainQty = beforeMainQty - input.quantity;
-    if (afterMainQty < 0) {
-      throw new InsufficientStockError();
-    }
+    if (afterMainQty < 0) throw new InsufficientStockError();
 
     const afterPharmQty = beforePharmQty + input.quantity;
 
-    // Update main stock
     tx.update(mainStockRef, {
       quantity: afterMainQty,
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    // Update pharmacy stock
     tx.update(pharmStockRef, {
       quantity: afterPharmQty,
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    // Main ledger: OUT (TRANSFER)
     tx.set(mainLedgerRef, {
       type: "OUT",
       reference: "TRANSFER",
@@ -140,18 +146,17 @@ export async function transferToPharmacy(
       price: 0,
       supplier: "",
       notes: input.notes ?? "",
-      timestamp: FieldValue.serverTimestamp(),
+      timestamp: entryTimestamp,
       userId,
     });
 
-    // Pharmacy ledger: IN (TRANSFER)
     tx.set(pharmLedgerRef, {
       type: "IN",
       reference: "TRANSFER",
       quantity: input.quantity,
       batch: input.batch,
       expiry: expiryTimestamp,
-      timestamp: FieldValue.serverTimestamp(),
+      timestamp: entryTimestamp,
       userId,
     });
   });
@@ -177,6 +182,7 @@ export async function dispenseFromPharmacy(
     price?: number;
     patientName?: string;
     prescriptionNo?: string;
+    entryDate?: string;
   },
   userId: string
 ) {
@@ -184,6 +190,7 @@ export async function dispenseFromPharmacy(
   const pharmStockRef = db.collection("pharmacyStock").doc(input.productId);
   const pharmLedgerRef = pharmStockRef.collection("pharmacyLedger").doc();
   const saleRef = db.collection("sales").doc();
+  const entryTimestamp = toTimestamp(input.entryDate);
 
   let beforeQty = 0;
   let afterQty = 0;
@@ -193,12 +200,8 @@ export async function dispenseFromPharmacy(
     if (!pharmSnap.exists) throw new NotFoundError("Pharmacy stock record");
 
     beforeQty = pharmSnap.data()!.quantity ?? 0;
-
-    // ⚠️  Critical: prevent negative pharmacy stock
     afterQty = beforeQty - input.quantity;
-    if (afterQty < 0) {
-      throw new InsufficientStockError();
-    }
+    if (afterQty < 0) throw new InsufficientStockError();
 
     tx.update(pharmStockRef, {
       quantity: afterQty,
@@ -213,7 +216,7 @@ export async function dispenseFromPharmacy(
       expiry: null,
       patientName: input.patientName ?? "",
       prescriptionNo: input.prescriptionNo ?? "",
-      timestamp: FieldValue.serverTimestamp(),
+      timestamp: entryTimestamp,
       userId,
     });
 
@@ -223,7 +226,7 @@ export async function dispenseFromPharmacy(
       price: input.price ?? 0,
       patientName: input.patientName ?? "",
       prescriptionNo: input.prescriptionNo ?? "",
-      timestamp: FieldValue.serverTimestamp(),
+      timestamp: entryTimestamp,
       userId,
     });
   });
@@ -251,13 +254,14 @@ export async function bulkDispense(
     quantity: number;
     batch?: string;
     price?: number;
+    entryDate?: string;
   }>,
-  meta: { patientName?: string; prescriptionNo?: string },
+  meta: { patientName?: string; prescriptionNo?: string; entryDate?: string },
   userId: string
 ) {
   const results = await Promise.allSettled(
     items.map((item) =>
-      dispenseFromPharmacy({ ...item, ...meta }, userId)
+      dispenseFromPharmacy({ ...item, ...meta, entryDate: meta.entryDate }, userId)
     )
   );
 
@@ -300,6 +304,8 @@ export async function adjustStock(input: StockAdjustmentInput, userId: string) {
       type: "ADJUSTMENT",
       quantity: Math.abs(diff),
       adjustmentDelta: diff,
+      beforeQty,
+      afterQty: input.newQuantity,
       batch: "",
       expiry: null,
       price: 0,
@@ -334,12 +340,8 @@ export async function getAllStockLevels() {
   const mainMap: Record<string, number> = {};
   const pharmMap: Record<string, number> = {};
 
-  mainSnap.docs.forEach((d) => {
-    mainMap[d.id] = d.data().quantity ?? 0;
-  });
-  pharmSnap.docs.forEach((d) => {
-    pharmMap[d.id] = d.data().quantity ?? 0;
-  });
+  mainSnap.docs.forEach((d) => { mainMap[d.id] = d.data().quantity ?? 0; });
+  pharmSnap.docs.forEach((d) => { pharmMap[d.id] = d.data().quantity ?? 0; });
 
   return { mainMap, pharmMap };
 }
