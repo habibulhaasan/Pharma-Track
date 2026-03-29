@@ -10,11 +10,16 @@ import type { StockInInput, StockAdjustmentInput } from "@/schemas/stock";
 // Helper: convert a date string "YYYY-MM-DD" to a Firestore Timestamp at noon UTC
 // Falls back to server timestamp if no date provided
 function toTimestamp(dateStr?: string | null): Timestamp | ReturnType<typeof FieldValue.serverTimestamp> {
-  if (dateStr) {
-    // Use noon UTC of the selected date to avoid timezone edge cases
-    const d = new Date(dateStr + "T12:00:00.000Z");
-    if (!isNaN(d.getTime())) return Timestamp.fromDate(d);
+  if (dateStr && typeof dateStr === "string" && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    // Parse as local midnight — keeps the date correct regardless of server timezone
+    const [year, month, day] = dateStr.split("-").map(Number);
+    const d = new Date(Date.UTC(year, month - 1, day, 6, 0, 0)); // 06:00 UTC = noon Bangladesh (UTC+6)
+    if (!isNaN(d.getTime())) {
+      console.log("[toTimestamp] Using selected date:", dateStr, "→", d.toISOString());
+      return Timestamp.fromDate(d);
+    }
   }
+  console.log("[toTimestamp] No valid date, using serverTimestamp. Received:", dateStr);
   return FieldValue.serverTimestamp() as any;
 }
 
