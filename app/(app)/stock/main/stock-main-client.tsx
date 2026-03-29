@@ -65,6 +65,7 @@ export function StockMainClient({ products }: { products: Product[]; isAdmin: bo
         expiry: rows[p.id].expiry || null,
         supplier: rows[p.id].supplier || "Unknown",
         reference: date,
+        entryDate: date,
       }));
 
     if (entries.length === 0) { toast.error("Enter quantity for at least one product"); return; }
