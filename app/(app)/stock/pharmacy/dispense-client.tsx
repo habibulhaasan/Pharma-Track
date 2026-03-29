@@ -63,7 +63,7 @@ export function DispenseClient({ products }: { products: Product[] }) {
     }));
 
     startTransition(async () => {
-      const result = await bulkDispenseAction({ items, patientName, prescriptionNo });
+      const result = await bulkDispenseAction({ items, patientName, prescriptionNo, entryDate: date });
       if (result.success) {
         const d = result.data as any;
         toast.success(`Dispensed: ${d.succeeded} medicine${d.succeeded !== 1 ? "s" : ""}`);
