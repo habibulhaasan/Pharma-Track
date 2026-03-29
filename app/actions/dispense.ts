@@ -4,6 +4,11 @@ import { requireAuth } from "@/lib/auth";
 import { dispenseFromPharmacy, bulkDispense } from "@/services/stockService";
 import { SingleDispenseSchema, DispenseSchema } from "@/schemas/dispense";
 import { handleActionError } from "@/utils/errorHandler";
+import { z } from "zod";
+
+const BulkDispenseWithDateSchema = DispenseSchema.extend({
+  entryDate: z.string().optional().nullable(),
+});
 
 export async function dispenseAction(data: unknown) {
   try {
@@ -19,7 +24,7 @@ export async function dispenseAction(data: unknown) {
 export async function bulkDispenseAction(data: unknown) {
   try {
     const user = await requireAuth();
-    const validated = DispenseSchema.parse(data);
+    const validated = BulkDispenseWithDateSchema.parse(data);
     const result = await bulkDispense(
       validated.items,
       {
