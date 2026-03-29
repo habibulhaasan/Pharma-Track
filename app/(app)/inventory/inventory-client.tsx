@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   ClipboardList, Search, Boxes, ArrowLeftRight,
-  Pill, Pencil, Check, X,
+  Pill, Pencil, Check, X, Trash2, Calendar,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CalendarPicker } from "@/components/ui/calendar-picker";
-import { getDayInventoryAction, editTransactionAction } from "@/app/actions/inventory";
+import { getDayInventoryAction, editTransactionAction, deleteTransactionAction, changeDateTransactionAction } from "@/app/actions/inventory";
 
 interface Product { id: string; brandName: string; genericName: string; type: string; unit: string; }
 
@@ -94,6 +94,16 @@ export function InventoryClient({
   const [editReason, setEditReason] = useState("");
   const [isEditing, startEdit] = useTransition();
 
+  // Delete state
+  const [deleteTarget, setDeleteTarget] = useState<Entry | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [isDeleting, startDelete] = useTransition();
+
+  // Change date state
+  const [changeDateTarget, setChangeDateTarget] = useState<Entry | null>(null);
+  const [newDate, setNewDate] = useState("");
+  const [isChangingDate, startChangeDate] = useTransition();
+
   // Active dates depends on filter type
   const activeDates =
     typeFilter === "stock-in" ? stockInDates
@@ -136,6 +146,47 @@ export function InventoryClient({
 
   function startEditing(entry: Entry) { setEditingId(entry.id); setEditQty(String(entry.quantity)); setEditReason(""); }
   function cancelEdit() { setEditingId(null); setEditQty(""); setEditReason(""); }
+
+  function confirmDelete(entry: Entry) {
+    if (deleteReason.trim().length < 5) { toast.error("Enter a reason (min 5 characters)"); return; }
+    startDelete(async () => {
+      const result = await deleteTransactionAction({
+        productId: entry.productId,
+        ledgerType: entry.ledgerType,
+        entryId: entry.id,
+        reason: deleteReason.trim(),
+      });
+      if (result.success) {
+        toast.success("Transaction deleted and stock reversed");
+        setDeleteTarget(null);
+        setDeleteReason("");
+        loadEntries(selectedDate);
+        router.refresh();
+      } else {
+        toast.error((result as any).error ?? "Delete failed");
+      }
+    });
+  }
+
+  function confirmChangeDate(entry: Entry) {
+    if (!newDate) { toast.error("Select a new date"); return; }
+    startChangeDate(async () => {
+      const result = await changeDateTransactionAction({
+        productId: entry.productId,
+        ledgerType: entry.ledgerType,
+        entryId: entry.id,
+        newDate,
+      });
+      if (result.success) {
+        toast.success("Date updated");
+        setChangeDateTarget(null);
+        setNewDate("");
+        loadEntries(selectedDate);
+      } else {
+        toast.error((result as any).error ?? "Date change failed");
+      }
+    });
+  }
 
   function submitEdit(entry: Entry) {
     const newQty = parseInt(editQty, 10);
@@ -259,7 +310,7 @@ export function InventoryClient({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40">
-                    {/* <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-14">Time</th> */}
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-14">Time</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase">Product</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-24">Type</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-20">Qty</th>
@@ -287,9 +338,9 @@ export function InventoryClient({
                       return (
                         <tr key={`${entry.ledgerType}-${entry.id}`}
                           className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                          {/* <td className="px-3 py-2.5">
+                          <td className="px-3 py-2.5">
                             <span className="text-xs text-muted-foreground tabular-nums">{formatTime(entry.timestamp)}</span>
-                          </td> */}
+                          </td>
                           <td className="px-3 py-2.5 max-w-[130px] sm:max-w-none">
                             <p className="font-medium text-xs sm:text-sm truncate">{entry.brandName}</p>
                             <p className="hidden sm:block text-xs text-muted-foreground truncate">{entry.genericName}</p>
@@ -336,19 +387,58 @@ export function InventoryClient({
                               {isEditingThis ? (
                                 <div className="flex gap-1">
                                   <button onClick={() => submitEdit(entry)} disabled={isEditing}
-                                    className="rounded p-1 text-success hover:bg-success/10 transition-colors">
+                                    className="rounded p-1 text-success hover:bg-success/10 transition-colors" title="Save">
                                     <Check className="h-4 w-4" />
                                   </button>
                                   <button onClick={cancelEdit}
-                                    className="rounded p-1 text-destructive hover:bg-destructive/10 transition-colors">
+                                    className="rounded p-1 text-destructive hover:bg-destructive/10 transition-colors" title="Cancel">
                                     <X className="h-4 w-4" />
                                   </button>
                                 </div>
+                              ) : deleteTarget?.id === entry.id ? (
+                                <div className="flex items-center gap-1">
+                                  <input type="text" value={deleteReason}
+                                    onChange={(e) => setDeleteReason(e.target.value)}
+                                    placeholder="Reason…"
+                                    className="h-7 w-24 rounded border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+                                  <button onClick={() => confirmDelete(entry)} disabled={isDeleting}
+                                    className="rounded p-1 text-destructive hover:bg-destructive/10 transition-colors" title="Confirm delete">
+                                    <Check className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button onClick={() => { setDeleteTarget(null); setDeleteReason(""); }}
+                                    className="rounded p-1 text-muted-foreground hover:bg-muted/50 transition-colors" title="Cancel">
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ) : changeDateTarget?.id === entry.id ? (
+                                <div className="flex items-center gap-1">
+                                  <input type="date" value={newDate}
+                                    onChange={(e) => setNewDate(e.target.value)}
+                                    className="h-7 rounded border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+                                  <button onClick={() => confirmChangeDate(entry)} disabled={isChangingDate}
+                                    className="rounded p-1 text-success hover:bg-success/10 transition-colors" title="Save date">
+                                    <Check className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button onClick={() => { setChangeDateTarget(null); setNewDate(""); }}
+                                    className="rounded p-1 text-muted-foreground hover:bg-muted/50 transition-colors" title="Cancel">
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                               ) : (
-                                <button onClick={() => startEditing(entry)}
-                                  className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
+                                <div className="flex gap-0.5">
+                                  <button onClick={() => startEditing(entry)} title="Edit quantity"
+                                    className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button onClick={() => { setChangeDateTarget(entry); setNewDate(selectedDate); }} title="Change date"
+                                    className="rounded p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                                    <Calendar className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button onClick={() => { setDeleteTarget(entry); setDeleteReason(""); }} title="Delete & reverse"
+                                    className="rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                               )}
                             </td>
                           )}

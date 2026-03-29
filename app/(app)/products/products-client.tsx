@@ -169,6 +169,14 @@ export function ProductsClientPage({ products, isAdmin }: ProductsClientPageProp
       ),
     },
     {
+      key: "productId",
+      header: "Product ID",
+      cell: (row: Product) => (
+        <span className="text-xs font-mono text-muted-foreground">{row.id}</span>
+      ),
+      className: "hidden sm:table-cell w-24",
+    },
+    {
       key: "type",
       header: "Type",
       cell: (row: Product) => (

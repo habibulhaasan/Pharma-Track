@@ -156,3 +156,91 @@ export async function editTransactionAction({
 
   return { success: true };
 }
+
+// Delete a specific transaction and reverse its stock effect (admin only)
+export async function deleteTransactionAction({
+  productId,
+  ledgerType,
+  entryId,
+  reason,
+}: {
+  productId: string;
+  ledgerType: "main" | "pharmacy";
+  entryId: string;
+  reason: string;
+}) {
+  const user = await requireAuth();
+  if (user.role !== "admin") return { success: false, error: "Admin only" };
+
+  const db = getAdminDb();
+  const collName = ledgerType === "main" ? "mainStock" : "pharmacyStock";
+  const subColl = ledgerType === "main" ? "mainLedger" : "pharmacyLedger";
+
+  const entryRef = db.collection(collName).doc(productId).collection(subColl).doc(entryId);
+  const stockRef = db.collection(collName).doc(productId);
+
+  await db.runTransaction(async (tx) => {
+    const entryDoc = await tx.get(entryRef);
+    const stockDoc = await tx.get(stockRef);
+    if (!entryDoc.exists) throw new Error("Entry not found");
+
+    const data = entryDoc.data()!;
+    const qty = data.quantity ?? 0;
+    const type = data.type ?? "IN";
+    const currentStock = stockDoc.data()?.quantity ?? 0;
+
+    // Reverse the effect: if it was IN, subtract; if OUT, add back
+    let newStock = currentStock;
+    if (type === "IN") newStock = Math.max(0, currentStock - qty);
+    else if (type === "OUT") newStock = currentStock + qty;
+
+    // Soft delete — mark as deleted rather than removing (preserves audit trail)
+    tx.update(entryRef, {
+      deleted: true,
+      deletedBy: user.id,
+      deletedAt: Timestamp.now(),
+      deleteReason: reason,
+    });
+
+    tx.update(stockRef, {
+      quantity: newStock,
+      updatedAt: Timestamp.now(),
+    });
+  });
+
+  return { success: true };
+}
+
+// Change the date of a specific transaction (admin only)
+export async function changeDateTransactionAction({
+  productId,
+  ledgerType,
+  entryId,
+  newDate,
+}: {
+  productId: string;
+  ledgerType: "main" | "pharmacy";
+  entryId: string;
+  newDate: string; // YYYY-MM-DD
+}) {
+  const user = await requireAuth();
+  if (user.role !== "admin") return { success: false, error: "Admin only" };
+
+  const db = getAdminDb();
+  const collName = ledgerType === "main" ? "mainStock" : "pharmacyStock";
+  const subColl = ledgerType === "main" ? "mainLedger" : "pharmacyLedger";
+
+  const entryRef = db.collection(collName).doc(productId).collection(subColl).doc(entryId);
+
+  const [year, month, day] = newDate.split("-").map(Number);
+  const newTimestamp = Timestamp.fromDate(new Date(Date.UTC(year, month - 1, day, 6, 0, 0)));
+
+  await entryRef.update({
+    timestamp: newTimestamp,
+    dateChangedBy: user.id,
+    dateChangedAt: Timestamp.now(),
+    originalDate: (await entryRef.get()).data()?.timestamp ?? null,
+  });
+
+  return { success: true };
+}
