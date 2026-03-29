@@ -22,7 +22,11 @@ export async function bulkDispenseAction(data: unknown) {
     const validated = DispenseSchema.parse(data);
     const result = await bulkDispense(
       validated.items,
-      { patientName: validated.patientName, prescriptionNo: validated.prescriptionNo },
+      {
+        patientName: validated.patientName,
+        prescriptionNo: validated.prescriptionNo,
+        entryDate: validated.entryDate ?? undefined,
+      },
       user.id
     );
     return { success: true, data: result };
