@@ -128,12 +128,12 @@ export function InventoryClient({
     if (!bulkDate) { toast.error("Select a new date"); return; }
     if (selectedEntries.size === 0) { toast.error("Select at least one entry"); return; }
 
-    const entries = filtered
+    const entriesToUpdate = filtered
       .filter((e) => selectedEntries.has(`${e.ledgerType}-${e.id}`))
       .map((e) => ({ productId: e.productId, ledgerType: e.ledgerType, entryId: e.id }));
 
     startBulkChange(async () => {
-      const result = await bulkChangeDateAction({ entries, newDate: bulkDate });
+      const result = await bulkChangeDateAction({ entries: entriesToUpdate, newDate: bulkDate });
       if (result.success) {
         const d = result.data as any;
         toast.success(`Date changed for ${d.succeeded} transaction${d.succeeded !== 1 ? "s" : ""}`);
@@ -411,7 +411,7 @@ export function InventoryClient({
                       const isEditingThis = editingId === entry.id;
                       return (
                         <tr key={`${entry.ledgerType}-${entry.id}`}
-                          className={`border-b last:border-0 hover:bg-muted/20 transition-colors ${selectedEntries.has(\`\${entry.ledgerType}-\${entry.id}\`) ? "bg-primary/5" : ""}`}>
+                          className={`border-b last:border-0 hover:bg-muted/20 transition-colors ${selectedEntries.has(`${entry.ledgerType}-${entry.id}`) ? "bg-primary/5" : ""}`}>
                           {isAdmin && (
                             <td className="px-3 py-2.5">
                               <input type="checkbox"
