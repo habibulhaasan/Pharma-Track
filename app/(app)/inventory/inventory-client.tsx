@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CalendarPicker } from "@/components/ui/calendar-picker";
-import { getDayInventoryAction, editTransactionAction, deleteTransactionAction, changeDateTransactionAction } from "@/app/actions/inventory";
+import { getDayInventoryAction, editTransactionAction, deleteTransactionAction, changeDateTransactionAction, bulkChangeDateAction } from "@/app/actions/inventory";
 
 interface Product { id: string; brandName: string; genericName: string; type: string; unit: string; }
 
@@ -103,6 +103,49 @@ export function InventoryClient({
   const [changeDateTarget, setChangeDateTarget] = useState<Entry | null>(null);
   const [newDate, setNewDate] = useState("");
   const [isChangingDate, startChangeDate] = useTransition();
+
+  // Bulk date change state
+  const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set());
+  const [bulkDate, setBulkDate] = useState("");
+  const [isBulkChanging, startBulkChange] = useTransition();
+
+  function toggleSelect(key: string) {
+    setSelectedEntries((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedEntries(new Set(filtered.map((e) => `${e.ledgerType}-${e.id}`)));
+  }
+
+  function clearSelection() { setSelectedEntries(new Set()); }
+
+  function confirmBulkDateChange() {
+    if (!bulkDate) { toast.error("Select a new date"); return; }
+    if (selectedEntries.size === 0) { toast.error("Select at least one entry"); return; }
+
+    const entries = filtered
+      .filter((e) => selectedEntries.has(`${e.ledgerType}-${e.id}`))
+      .map((e) => ({ productId: e.productId, ledgerType: e.ledgerType, entryId: e.id }));
+
+    startBulkChange(async () => {
+      const result = await bulkChangeDateAction({ entries, newDate: bulkDate });
+      if (result.success) {
+        const d = result.data as any;
+        toast.success(`Date changed for ${d.succeeded} transaction${d.succeeded !== 1 ? "s" : ""}`);
+        if (d.failed?.length > 0) toast.error(`${d.failed.length} failed`);
+        clearSelection();
+        setBulkDate("");
+        loadEntries(selectedDate);
+      } else {
+        toast.error((result as any).error ?? "Bulk date change failed");
+      }
+    });
+  }
 
   // Active dates depends on filter type
   const activeDates =
@@ -304,13 +347,44 @@ export function InventoryClient({
             )}
           </div>
 
+          {/* Bulk action toolbar */}
+          {isAdmin && selectedEntries.size > 0 && (
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-primary/5 border-primary/20 px-4 py-2.5">
+              <span className="text-xs font-medium text-primary">
+                {selectedEntries.size} selected
+              </span>
+              <div className="flex items-center gap-2 ml-auto flex-wrap">
+                <span className="text-xs text-muted-foreground">Change all to:</span>
+                <input type="date" value={bulkDate} onChange={(e) => setBulkDate(e.target.value)}
+                  className="h-7 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+                <button onClick={confirmBulkDateChange} disabled={isBulkChanging || !bulkDate}
+                  className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                  <Calendar className="h-3.5 w-3.5" />
+                  Apply Date
+                </button>
+                <button onClick={clearSelection}
+                  className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted/50 transition-colors">
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Table */}
           <div className="overflow-hidden rounded-lg border bg-card">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40">
-                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-14">Time</th>
+                    {isAdmin && (
+                    <th className="px-3 py-2.5 w-8">
+                      <input type="checkbox"
+                        checked={selectedEntries.size === filtered.length && filtered.length > 0}
+                        onChange={(e) => e.target.checked ? selectAll() : clearSelection()}
+                        className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer" />
+                    </th>
+                  )}
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-14">Time</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase">Product</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-24">Type</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-20">Qty</th>
@@ -337,7 +411,15 @@ export function InventoryClient({
                       const isEditingThis = editingId === entry.id;
                       return (
                         <tr key={`${entry.ledgerType}-${entry.id}`}
-                          className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                          className={`border-b last:border-0 hover:bg-muted/20 transition-colors ${selectedEntries.has(\`\${entry.ledgerType}-\${entry.id}\`) ? "bg-primary/5" : ""}`}>
+                          {isAdmin && (
+                            <td className="px-3 py-2.5">
+                              <input type="checkbox"
+                                checked={selectedEntries.has(`${entry.ledgerType}-${entry.id}`)}
+                                onChange={() => toggleSelect(`${entry.ledgerType}-${entry.id}`)}
+                                className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer" />
+                            </td>
+                          )}
                           <td className="px-3 py-2.5">
                             <span className="text-xs text-muted-foreground tabular-nums">{formatTime(entry.timestamp)}</span>
                           </td>

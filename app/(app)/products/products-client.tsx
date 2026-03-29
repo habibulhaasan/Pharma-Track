@@ -164,17 +164,11 @@ export function ProductsClientPage({ products, isAdmin }: ProductsClientPageProp
       cell: (row: Product) => (
         <div>
           <p className="font-medium text-sm">{row.brandName}</p>
-          <p className="text-xs text-muted-foreground">{row.genericName}</p>
+          {/* Mobile: show product ID. Desktop: show generic name */}
+          <p className="text-xs text-muted-foreground sm:hidden font-mono">{row.id}</p>
+          <p className="hidden sm:block text-xs text-muted-foreground">{row.genericName}</p>
         </div>
       ),
-    },
-    {
-      key: "productId",
-      header: "Product ID",
-      cell: (row: Product) => (
-        <span className="text-xs font-mono text-muted-foreground">{row.id}</span>
-      ),
-      className: "hidden sm:table-cell w-24",
     },
     {
       key: "type",

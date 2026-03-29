@@ -244,3 +244,47 @@ export async function changeDateTransactionAction({
 
   return { success: true };
 }
+
+// Bulk change date for multiple transactions (admin only)
+export async function bulkChangeDateAction({
+  entries,
+  newDate,
+}: {
+  entries: { productId: string; ledgerType: "main" | "pharmacy"; entryId: string }[];
+  newDate: string;
+}) {
+  const user = await requireAuth();
+  if (user.role !== "admin") return { success: false, error: "Admin only" };
+
+  const db = getAdminDb();
+  const [year, month, day] = newDate.split("-").map(Number);
+  const newTimestamp = Timestamp.fromDate(
+    new Date(Date.UTC(year, month - 1, day, 6, 0, 0))
+  );
+
+  let succeeded = 0;
+  const failed: string[] = [];
+
+  for (const entry of entries) {
+    try {
+      const collName = entry.ledgerType === "main" ? "mainStock" : "pharmacyStock";
+      const subColl = entry.ledgerType === "main" ? "mainLedger" : "pharmacyLedger";
+      const ref = db
+        .collection(collName)
+        .doc(entry.productId)
+        .collection(subColl)
+        .doc(entry.entryId);
+
+      await ref.update({
+        timestamp: newTimestamp,
+        dateChangedBy: user.id,
+        dateChangedAt: Timestamp.now(),
+      });
+      succeeded++;
+    } catch {
+      failed.push(entry.entryId);
+    }
+  }
+
+  return { success: true, data: { succeeded, failed } };
+}

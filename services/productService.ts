@@ -4,12 +4,14 @@ import { getAdminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import type { CreateProductInput } from "@/schemas/product";
 
-export async function getAllProducts(includeDeleted = false) {
+export async function getAllProducts() {
   const db = getAdminDb();
-  const snap = await db.collection("products").orderBy("genericName", "asc").get();
+  const snap = await db
+    .collection("products")
+    .where("deleted", "==", false)
+    .get();
   const products = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  if (includeDeleted) return products;
-  return products.filter((p: any) => !p.deleted);
+  return products;
 }
 
 export async function getProductById(productId: string) {
@@ -19,9 +21,31 @@ export async function getProductById(productId: string) {
   return { id: doc.id, ...doc.data() };
 }
 
+// Generate next sequential P-ID (P1001, P1002, ...)
+async function generateProductId(): Promise<string> {
+  const db = getAdminDb();
+  // Get all existing P-IDs and find the highest number
+  const snap = await db.collection("products").get();
+  const pIds = snap.docs
+    .map((d) => d.id)
+    .filter((id) => /^P\d{4,}$/.test(id))
+    .map((id) => parseInt(id.slice(1), 10))
+    .filter((n) => !isNaN(n));
+
+  const nextNum = pIds.length > 0 ? Math.max(...pIds) + 1 : 1001;
+  return `P${nextNum}`;
+}
+
 export async function createProduct(data: CreateProductInput, userId: string) {
   const db = getAdminDb();
-  const ref = await db.collection("products").add({
+
+  // Generate sequential P-ID
+  const productId = await generateProductId();
+  const ref = db.collection("products").doc(productId);
+
+  const batch = db.batch();
+
+  batch.set(ref, {
     ...data,
     deleted: false,
     createdAt: FieldValue.serverTimestamp(),
@@ -29,20 +53,25 @@ export async function createProduct(data: CreateProductInput, userId: string) {
     createdBy: userId,
   });
 
-  const batch = db.batch();
-  batch.set(db.collection("mainStock").doc(ref.id), {
+  batch.set(db.collection("mainStock").doc(productId), {
     quantity: 0,
     updatedAt: FieldValue.serverTimestamp(),
   });
-  batch.set(db.collection("pharmacyStock").doc(ref.id), {
+
+  batch.set(db.collection("pharmacyStock").doc(productId), {
     quantity: 0,
     updatedAt: FieldValue.serverTimestamp(),
   });
+
   await batch.commit();
-  return ref.id;
+  return productId;
 }
 
-export async function updateProduct(productId: string, data: Partial<CreateProductInput>, userId: string) {
+export async function updateProduct(
+  productId: string,
+  data: Partial<CreateProductInput>,
+  userId: string
+) {
   const db = getAdminDb();
   await db.collection("products").doc(productId).update({
     ...data,
@@ -55,7 +84,7 @@ export async function softDeleteProduct(productId: string, userId: string) {
   const db = getAdminDb();
   await db.collection("products").doc(productId).update({
     deleted: true,
-    updatedAt: FieldValue.serverTimestamp(),
+    deletedAt: FieldValue.serverTimestamp(),
     deletedBy: userId,
   });
 }
