@@ -29,7 +29,7 @@ export async function bulkStockInAction(data: unknown) {
 
 export async function adjustStockAction(data: unknown) {
   try {
-    await requireAdmin(); // Admin only
+    await requireAdmin();
     const user = await requireAuth();
     const validated = StockAdjustmentSchema.parse(data);
     const result = await adjustStock(validated, user.id);
