@@ -63,6 +63,7 @@ export function TransferClient({ products }: { products: Product[] }) {
           batch: batches[product.id] || `TRF-${date}`,
           expiry: null,
           notes: `Transfer ${date}`,
+          entryDate: date,
         });
         if (result.success) succeeded++;
         else failed.push(product.brandName);
