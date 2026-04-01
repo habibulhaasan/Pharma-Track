@@ -1,290 +1,211 @@
-// app/actions/inventory.ts
 "use server";
+// app/actions/inventory.ts
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { requireAuth } from "@/lib/auth";
-import { Timestamp } from "firebase-admin/firestore";
+import { Timestamp, FieldValue } from "firebase-admin/firestore";
+import {
+  getActiveDates,
+  getTransactionsByDate,
+  changeTransactionDate,
+  type TxType,
+} from "@/services/transactionService";
 
-// Fetch all transactions for a specific date
-export async function getDayInventoryAction(date: string) {
-  const user = await requireAuth();
-  const db = getAdminDb();
-
-  const start = new Date(date + "T00:00:00.000Z");
-  const end = new Date(date + "T23:59:59.999Z");
-
-  const startTs = Timestamp.fromDate(start);
-  const endTs = Timestamp.fromDate(end);
-
-  const [mainSnap, pharmSnap, productsSnap] = await Promise.all([
-    db.collectionGroup("mainLedger")
-      .where("timestamp", ">=", startTs)
-      .where("timestamp", "<=", endTs)
-      .orderBy("timestamp", "asc")
-      .get().catch(() => ({ docs: [] })),
-    db.collectionGroup("pharmacyLedger")
-      .where("timestamp", ">=", startTs)
-      .where("timestamp", "<=", endTs)
-      .orderBy("timestamp", "asc")
-      .get().catch(() => ({ docs: [] })),
-    db.collection("products").get(),
-  ]);
-
-  const productMap: Record<string, { brandName: string; genericName: string; unit: string }> = {};
-  productsSnap.docs.forEach((d) => {
-    const data = d.data();
-    productMap[d.id] = {
-      brandName: data.brandName ?? "",
-      genericName: data.genericName ?? "",
-      unit: data.unit ?? "",
-    };
-  });
-
-  function serialize(doc: any, ledgerType: "main" | "pharmacy") {
-    const data = doc.data();
-    const productId = doc.ref.parent.parent?.id ?? "";
-    const product = productMap[productId] ?? { brandName: productId, genericName: "", unit: "" };
-    const ts = data.timestamp?.toDate?.() ?? new Date(data.timestamp?.seconds * 1000);
-    return {
-      id: doc.id,
-      productId,
-      brandName: product.brandName,
-      genericName: product.genericName,
-      unit: product.unit,
-      ledgerType,
-      type: data.type ?? "",
-      reference: data.reference ?? "",
-      quantity: data.quantity ?? 0,
-      price: data.price ?? 0,
-      batch: data.batch ?? "",
-      supplier: data.supplier ?? "",
-      patientName: data.patientName ?? "",
-      prescriptionNo: data.prescriptionNo ?? "",
-      reason: data.reason ?? "",
-      userId: data.userId ?? "",
-      timestamp: ts.toISOString(),
-    };
+// ─── Get active dates from _meta (1 read) ────────────────────────────────
+export async function getActiveDatesAction() {
+  await requireAuth();
+  try {
+    return { success: true, data: await getActiveDates() };
+  } catch {
+    return { success: true, data: { allDates: [], stockInDates: [], transferDates: [], dispenseDates: [] } };
   }
-
-  const allEntries = [
-    ...mainSnap.docs.map((d) => serialize(d, "main")),
-    ...pharmSnap.docs.map((d) => serialize(d, "pharmacy")),
-  ];
-
-  // Deduplicate transfers: a transfer writes to both mainLedger (OUT/TRANSFER)
-  // and pharmacyLedger (IN/TRANSFER). Show only the main ledger side
-  // so it appears once as "Main → Pharmacy".
-  const pharmTransferIds = new Set(
-    pharmSnap.docs
-      .filter((d) => d.data().reference === "TRANSFER")
-      .map((d) => {
-        // Match by productId + approximate timestamp (within 5 seconds)
-        const ts = d.data().timestamp?.toDate?.()?.getTime() ?? 0;
-        const productId = d.ref.parent.parent?.id ?? "";
-        return `${productId}_${Math.floor(ts / 5000)}`;
-      })
-  );
-
-  const entries = allEntries
-    .filter((e) => {
-      // Keep pharmacy entries that are NOT transfers (i.e. dispense etc)
-      // Drop pharmacy TRANSFER entries — shown via main ledger side instead
-      if (e.ledgerType === "pharmacy" && e.reference === "TRANSFER") return false;
-      return true;
-    })
-    .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-
-  return { success: true, data: entries };
 }
 
-// Edit a specific transaction quantity (admin only)
-export async function editTransactionAction({
-  productId,
-  ledgerType,
-  entryId,
+// ─── Get all transactions for a specific date ─────────────────────────────
+export async function getDayInventoryAction(date: string) {
+  await requireAuth();
+  try {
+    const [stockIn, transfer, dispense] = await Promise.all([
+      getTransactionsByDate(date, "stockIn"),
+      getTransactionsByDate(date, "transfer"),
+      getTransactionsByDate(date, "dispense"),
+    ]);
+
+    const all = [
+      ...stockIn.map((e) => ({ ...e, txType: "stockIn" as TxType })),
+      ...transfer.map((e) => ({ ...e, txType: "transfer" as TxType })),
+      ...dispense.map((e) => ({ ...e, txType: "dispense" as TxType })),
+    ].sort((a, b) => {
+      const ta = (a.timestamp as any)?.toDate?.()?.getTime() ?? 0;
+      const tb = (b.timestamp as any)?.toDate?.()?.getTime() ?? 0;
+      return ta - tb;
+    });
+
+    const serialized = all.map((e) => ({
+      ...e,
+      timestamp: (e.timestamp as any)?.toDate?.()?.toISOString() ?? null,
+      savedAt: (e as any).savedAt?.toDate?.()?.toISOString() ?? null,
+    }));
+
+    return { success: true, data: serialized };
+  } catch (err) {
+    console.error("getDayInventoryAction:", err);
+    return { success: false, error: "Failed to load inventory" };
+  }
+}
+
+// ─── Delete transaction + hard delete ledger entry + reverse stock ─────────
+export async function deleteInventoryEntryAction({
+  dateKey,
+  txType,
+  txId,
+  reason,
+}: {
+  dateKey: string;
+  txType: TxType;
+  txId: string;
+  reason: string;
+}) {
+  const user = await requireAuth();
+  if (user.role !== "admin") return { success: false, error: "Admin only" };
+  if (!reason || reason.trim().length < 5) return { success: false, error: "Reason must be at least 5 characters" };
+
+  const db = getAdminDb();
+
+  // Read tx doc first
+  const txRef = db.collection("transactions").doc(dateKey).collection(txType).doc(txId);
+  const txDoc = await txRef.get();
+  if (!txDoc.exists) return { success: false, error: "Entry not found" };
+
+  const txData = txDoc.data()!;
+  const { productId, quantity, ledgerCollection, ledgerSubCollection, ledgerId } = txData;
+
+  await db.runTransaction(async (tx) => {
+    const stockRef = db.collection(ledgerCollection as string).doc(productId);
+    const ledgerRef = db.collection(ledgerCollection as string)
+      .doc(productId).collection(ledgerSubCollection as string).doc(ledgerId);
+
+    const stockSnap = await tx.get(stockRef);
+    const currentQty = stockSnap.data()?.quantity ?? 0;
+
+    let newQty: number;
+    if (txType === "stockIn") {
+      newQty = Math.max(0, currentQty - quantity); // reverse: remove what was added
+    } else if (txType === "transfer") {
+      newQty = currentQty + quantity; // reverse: add back to main
+    } else {
+      newQty = currentQty + quantity; // reverse: add back to pharmacy
+    }
+
+    tx.update(stockRef, { quantity: newQty, updatedAt: FieldValue.serverTimestamp() });
+    tx.delete(ledgerRef);
+    tx.delete(txRef);
+
+    // For transfer also reverse pharmacy stock
+    if (txType === "transfer") {
+      const pharmRef = db.collection("pharmacyStock").doc(productId);
+      const pharmSnap = await tx.get(pharmRef);
+      const pharmQty = pharmSnap.data()?.quantity ?? 0;
+      tx.update(pharmRef, { quantity: Math.max(0, pharmQty - quantity), updatedAt: FieldValue.serverTimestamp() });
+    }
+  });
+
+  return { success: true };
+}
+
+// ─── Edit quantity — updates both tx doc, ledger doc, and stock ────────────
+export async function editInventoryEntryAction({
+  dateKey,
+  txType,
+  txId,
   newQuantity,
   reason,
 }: {
-  productId: string;
-  ledgerType: "main" | "pharmacy";
-  entryId: string;
+  dateKey: string;
+  txType: TxType;
+  txId: string;
   newQuantity: number;
   reason: string;
 }) {
   const user = await requireAuth();
   if (user.role !== "admin") return { success: false, error: "Admin only" };
+  if (!reason || reason.trim().length < 5) return { success: false, error: "Reason too short" };
 
   const db = getAdminDb();
-  const collName = ledgerType === "main" ? "mainStock" : "pharmacyStock";
-  const subColl = ledgerType === "main" ? "mainLedger" : "pharmacyLedger";
+  const txRef = db.collection("transactions").doc(dateKey).collection(txType).doc(txId);
+  const txDoc = await txRef.get();
+  if (!txDoc.exists) return { success: false, error: "Entry not found" };
 
-  const entryRef = db.collection(collName).doc(productId).collection(subColl).doc(entryId);
-  const stockRef = db.collection(collName).doc(productId);
+  const txData = txDoc.data()!;
+  const { productId, quantity: oldQuantity, ledgerCollection, ledgerSubCollection, ledgerId } = txData;
 
   await db.runTransaction(async (tx) => {
-    const entryDoc = await tx.get(entryRef);
-    const stockDoc = await tx.get(stockRef);
+    const stockRef = db.collection(ledgerCollection as string).doc(productId);
+    const ledgerRef = db.collection(ledgerCollection as string)
+      .doc(productId).collection(ledgerSubCollection as string).doc(ledgerId);
 
-    if (!entryDoc.exists) throw new Error("Entry not found");
+    const stockSnap = await tx.get(stockRef);
+    const currentQty = stockSnap.data()?.quantity ?? 0;
 
-    const oldQty = entryDoc.data()!.quantity ?? 0;
-    const oldType = entryDoc.data()!.type ?? "IN";
-    const currentStock = stockDoc.data()?.quantity ?? 0;
-
-    // Recalculate stock: reverse old effect, apply new
-    let newStock = currentStock;
-    if (oldType === "IN") {
-      newStock = currentStock - oldQty + newQuantity; // was +old, now +new
-    } else if (oldType === "OUT") {
-      newStock = currentStock + oldQty - newQuantity; // was -old, now -new
+    let newQty: number;
+    if (txType === "stockIn") {
+      newQty = currentQty - oldQuantity + newQuantity;
+    } else if (txType === "transfer") {
+      newQty = currentQty + oldQuantity - newQuantity;
+      const pharmRef = db.collection("pharmacyStock").doc(productId);
+      const pharmSnap = await tx.get(pharmRef);
+      const pharmQty = pharmSnap.data()?.quantity ?? 0;
+      tx.update(pharmRef, { quantity: Math.max(0, pharmQty - oldQuantity + newQuantity), updatedAt: FieldValue.serverTimestamp() });
+    } else {
+      newQty = currentQty + oldQuantity - newQuantity;
     }
 
-    newStock = Math.max(0, newStock);
-
-    tx.update(entryRef, {
-      quantity: newQuantity,
-      editedBy: user.id,
-      editedAt: Timestamp.now(),
-      editReason: reason,
-      originalQuantity: oldQty,
-    });
-
-    tx.update(stockRef, {
-      quantity: newStock,
-      updatedAt: Timestamp.now(),
-    });
+    tx.update(stockRef, { quantity: Math.max(0, newQty), updatedAt: FieldValue.serverTimestamp() });
+    tx.update(ledgerRef, { quantity: newQuantity, editedBy: user.id, editedAt: Timestamp.now(), editReason: reason, originalQuantity: oldQuantity });
+    tx.update(txRef, { quantity: newQuantity, editedBy: user.id, editedAt: Timestamp.now(), editReason: reason, originalQuantity: oldQuantity });
   });
 
   return { success: true };
 }
 
-// Delete a specific transaction and reverse its stock effect (admin only)
-export async function deleteTransactionAction({
-  productId,
-  ledgerType,
-  entryId,
-  reason,
-}: {
-  productId: string;
-  ledgerType: "main" | "pharmacy";
-  entryId: string;
-  reason: string;
-}) {
-  const user = await requireAuth();
-  if (user.role !== "admin") return { success: false, error: "Admin only" };
-
-  const db = getAdminDb();
-  const collName = ledgerType === "main" ? "mainStock" : "pharmacyStock";
-  const subColl = ledgerType === "main" ? "mainLedger" : "pharmacyLedger";
-
-  const entryRef = db.collection(collName).doc(productId).collection(subColl).doc(entryId);
-  const stockRef = db.collection(collName).doc(productId);
-
-  await db.runTransaction(async (tx) => {
-    const entryDoc = await tx.get(entryRef);
-    const stockDoc = await tx.get(stockRef);
-    if (!entryDoc.exists) throw new Error("Entry not found");
-
-    const data = entryDoc.data()!;
-    const qty = data.quantity ?? 0;
-    const type = data.type ?? "IN";
-    const currentStock = stockDoc.data()?.quantity ?? 0;
-
-    // Reverse the effect: if it was IN, subtract; if OUT, add back
-    let newStock = currentStock;
-    if (type === "IN") newStock = Math.max(0, currentStock - qty);
-    else if (type === "OUT") newStock = currentStock + qty;
-
-    // Soft delete — mark as deleted rather than removing (preserves audit trail)
-    tx.update(entryRef, {
-      deleted: true,
-      deletedBy: user.id,
-      deletedAt: Timestamp.now(),
-      deleteReason: reason,
-    });
-
-    tx.update(stockRef, {
-      quantity: newStock,
-      updatedAt: Timestamp.now(),
-    });
-  });
-
-  return { success: true };
-}
-
-// Change the date of a specific transaction (admin only)
-export async function changeDateTransactionAction({
-  productId,
-  ledgerType,
-  entryId,
+// ─── Change date ──────────────────────────────────────────────────────────
+export async function changeDateInventoryEntryAction({
+  dateKey,
+  txType,
+  txId,
   newDate,
 }: {
-  productId: string;
-  ledgerType: "main" | "pharmacy";
-  entryId: string;
-  newDate: string; // YYYY-MM-DD
+  dateKey: string;
+  txType: TxType;
+  txId: string;
+  newDate: string;
 }) {
   const user = await requireAuth();
   if (user.role !== "admin") return { success: false, error: "Admin only" };
-
-  const db = getAdminDb();
-  const collName = ledgerType === "main" ? "mainStock" : "pharmacyStock";
-  const subColl = ledgerType === "main" ? "mainLedger" : "pharmacyLedger";
-
-  const entryRef = db.collection(collName).doc(productId).collection(subColl).doc(entryId);
-
-  const [year, month, day] = newDate.split("-").map(Number);
-  const newTimestamp = Timestamp.fromDate(new Date(Date.UTC(year, month - 1, day, 6, 0, 0)));
-
-  await entryRef.update({
-    timestamp: newTimestamp,
-    dateChangedBy: user.id,
-    dateChangedAt: Timestamp.now(),
-    originalDate: (await entryRef.get()).data()?.timestamp ?? null,
-  });
-
+  const ok = await changeTransactionDate(dateKey, txType, txId, newDate, user.id);
+  if (!ok) return { success: false, error: "Entry not found" };
   return { success: true };
 }
 
-// Bulk change date for multiple transactions (admin only)
+// ─── Bulk change date ─────────────────────────────────────────────────────
 export async function bulkChangeDateAction({
   entries,
   newDate,
 }: {
-  entries: { productId: string; ledgerType: "main" | "pharmacy"; entryId: string }[];
+  entries: { dateKey: string; txType: TxType; txId: string }[];
   newDate: string;
 }) {
   const user = await requireAuth();
   if (user.role !== "admin") return { success: false, error: "Admin only" };
 
-  const db = getAdminDb();
-  const [year, month, day] = newDate.split("-").map(Number);
-  const newTimestamp = Timestamp.fromDate(
-    new Date(Date.UTC(year, month - 1, day, 6, 0, 0))
-  );
-
   let succeeded = 0;
   const failed: string[] = [];
-
   for (const entry of entries) {
     try {
-      const collName = entry.ledgerType === "main" ? "mainStock" : "pharmacyStock";
-      const subColl = entry.ledgerType === "main" ? "mainLedger" : "pharmacyLedger";
-      const ref = db
-        .collection(collName)
-        .doc(entry.productId)
-        .collection(subColl)
-        .doc(entry.entryId);
-
-      await ref.update({
-        timestamp: newTimestamp,
-        dateChangedBy: user.id,
-        dateChangedAt: Timestamp.now(),
-      });
+      await changeTransactionDate(entry.dateKey, entry.txType, entry.txId, newDate, user.id);
       succeeded++;
     } catch {
-      failed.push(entry.entryId);
+      failed.push(entry.txId);
     }
   }
-
   return { success: true, data: { succeeded, failed } };
 }

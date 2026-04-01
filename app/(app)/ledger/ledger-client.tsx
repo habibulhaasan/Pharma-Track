@@ -8,6 +8,7 @@ import { collection, query, orderBy, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { ClipboardList, Search, TrendingUp, TrendingDown, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { LedgerExportButton } from "@/components/ledger-export-button";
 
 interface Product {
   id: string;
@@ -286,7 +287,11 @@ export function LedgerClient({ products }: { products: Product[] }) {
                     className={`px-3 py-1.5 font-medium transition-colors border-l ${ledgerType === "main" ? "bg-primary text-primary-foreground" : "hover:bg-muted/50"}`}>
                     Main Stock
                   </button>
+
                 </div>
+                <LedgerExportButton productId={selected.id} brandName={selected.brandName} ledgerType={ledgerType} />
+
+                  <LedgerExportButton exportAll />
               </div>
 
               {/* Filters */}

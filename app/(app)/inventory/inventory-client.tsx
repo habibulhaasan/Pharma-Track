@@ -9,31 +9,50 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CalendarPicker } from "@/components/ui/calendar-picker";
-import { getDayInventoryAction, editTransactionAction, deleteTransactionAction, changeDateTransactionAction, bulkChangeDateAction } from "@/app/actions/inventory";
+import {
+  getDayInventoryAction,
+  deleteInventoryEntryAction,
+  editInventoryEntryAction,
+  changeDateInventoryEntryAction,
+  bulkChangeDateAction,
+} from "@/app/actions/inventory";
 
-interface Product { id: string; brandName: string; genericName: string; type: string; unit: string; }
+// TxType matches what the actions expect
+type TxType = "stockIn" | "transfer" | "dispense";
+
+
+interface Product {
+  id: string;
+  brandName: string;
+  genericName: string;
+  type: string;
+  unit: string;
+}
 
 interface Entry {
   id: string;
+  txType: TxType;
+  dateKey: string;       // YYYY-MM-DD — used for action calls
   productId: string;
   brandName: string;
   genericName: string;
   unit: string;
-  ledgerType: "main" | "pharmacy";
-  type: string;
-  reference: string;
   quantity: number;
-  price: number;
-  batch: string;
-  supplier: string;
-  patientName: string;
-  prescriptionNo: string;
-  reason: string;
+  price?: number;
+  batch?: string;
+  supplier?: string;
+  patientName?: string;
+  prescriptionNo?: string;
+  notes?: string;
   userId: string;
-  timestamp: string;
+  entryDate: string;
+  timestamp: string | null;
   originalQuantity?: number;
   editReason?: string;
-  editedBy?: string;
+  // Legacy fields still in data for display
+  type?: string;
+  reference?: string;
+  reason?: string;
 }
 
 const TYPE_ORDER: Record<string, number> = {
@@ -42,33 +61,31 @@ const TYPE_ORDER: Record<string, number> = {
   patch: 9, suppository: 10, other: 11,
 };
 
-type FilterType = "all" | "stock-in" | "transfer" | "dispense";
+type FilterType = "all" | "stockIn" | "transfer" | "dispense";
 
-function formatTime(iso: string) {
+function formatTime(iso: string | null) {
+  if (!iso) return "—";
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
-function getEntryMeta(entry: Entry) {
-  if (entry.ledgerType === "main" && entry.type === "IN")
-    return { label: "Stock IN", badgeVariant: "success" as const };
-  if (entry.reference === "TRANSFER")
-    return { label: "Main → Pharmacy", badgeVariant: "secondary" as const };
-  if (entry.ledgerType === "pharmacy" && entry.reference === "DISPENSE")
-    return { label: "Dispensed", badgeVariant: "critical" as const };
-  if (entry.type === "ADJUSTMENT")
-    return { label: "Adjustment", badgeVariant: "outline" as const };
-  return { label: entry.type, badgeVariant: "outline" as const };
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "2-digit", month: "short", year: "numeric",
-  });
+function getEntryMeta(entry: Entry) {
+  if (entry.txType === "stockIn")
+    return { label: "Stock IN", badgeVariant: "success" as const };
+  if (entry.txType === "transfer")
+    return { label: "Main → Pharmacy", badgeVariant: "secondary" as const };
+  if (entry.txType === "dispense")
+    return { label: "Dispensed", badgeVariant: "critical" as const };
+  return { label: entry.txType, badgeVariant: "outline" as const };
 }
 
 export function InventoryClient({
   products,
   isAdmin,
+  userId,
   allDates,
   stockInDates,
   transferDates,
@@ -89,6 +106,7 @@ export function InventoryClient({
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editQty, setEditQty] = useState("");
   const [editReason, setEditReason] = useState("");
@@ -104,59 +122,20 @@ export function InventoryClient({
   const [newDate, setNewDate] = useState("");
   const [isChangingDate, startChangeDate] = useTransition();
 
-  // Bulk date change state
+  // Bulk date change
   const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set());
   const [bulkDate, setBulkDate] = useState("");
   const [isBulkChanging, startBulkChange] = useTransition();
 
-  function toggleSelect(key: string) {
-    setSelectedEntries((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
-  function selectAll() {
-    setSelectedEntries(new Set(filtered.map((e) => `${e.ledgerType}-${e.id}`)));
-  }
-
-  function clearSelection() { setSelectedEntries(new Set()); }
-
-  function confirmBulkDateChange() {
-    if (!bulkDate) { toast.error("Select a new date"); return; }
-    if (selectedEntries.size === 0) { toast.error("Select at least one entry"); return; }
-
-    const entriesToUpdate = filtered
-      .filter((e) => selectedEntries.has(`${e.ledgerType}-${e.id}`))
-      .map((e) => ({ productId: e.productId, ledgerType: e.ledgerType, entryId: e.id }));
-
-    startBulkChange(async () => {
-      const result = await bulkChangeDateAction({ entries: entriesToUpdate, newDate: bulkDate });
-      if (result.success) {
-        const d = result.data as any;
-        toast.success(`Date changed for ${d.succeeded} transaction${d.succeeded !== 1 ? "s" : ""}`);
-        if (d.failed?.length > 0) toast.error(`${d.failed.length} failed`);
-        clearSelection();
-        setBulkDate("");
-        loadEntries(selectedDate);
-      } else {
-        toast.error((result as any).error ?? "Bulk date change failed");
-      }
-    });
-  }
-
-  // Active dates depends on filter type
+  // Active dates by filter type
   const activeDates =
-    typeFilter === "stock-in" ? stockInDates
+    typeFilter === "stockIn" ? stockInDates
     : typeFilter === "transfer" ? transferDates
     : typeFilter === "dispense" ? dispenseDates
     : allDates;
 
   const [selectedDate, setSelectedDate] = useState(activeDates[0] ?? "");
 
-  // When filter changes, reset to first valid date for that filter
   useEffect(() => {
     const first = activeDates[0] ?? "";
     setSelectedDate(first);
@@ -170,7 +149,14 @@ export function InventoryClient({
     try {
       const result = await getDayInventoryAction(date);
       if (result.success) {
-        const sorted = (result.data as Entry[]).sort((a, b) => {
+        // Cast and enrich with dateKey
+        const data = (result.data as any[]).map((e) => ({
+          ...e,
+          dateKey: date,
+        })) as Entry[];
+
+        // Sort by product type then brand name
+        const sorted = data.sort((a, b) => {
           const pa = products.find((p) => p.id === a.productId);
           const pb = products.find((p) => p.id === b.productId);
           const oa = TYPE_ORDER[pa?.type ?? ""] ?? 99;
@@ -187,43 +173,73 @@ export function InventoryClient({
 
   useEffect(() => { if (selectedDate) loadEntries(selectedDate); }, [selectedDate]);
 
-  function startEditing(entry: Entry) { setEditingId(entry.id); setEditQty(String(entry.quantity)); setEditReason(""); }
-  function cancelEdit() { setEditingId(null); setEditQty(""); setEditReason(""); }
+  // ─── Bulk select helpers ───────────────────────────────────────────────
+  function toggleSelect(key: string) {
+    setSelectedEntries((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+  function selectAll() { setSelectedEntries(new Set(filtered.map((e) => `${e.txType}-${e.id}`))); }
+  function clearSelection() { setSelectedEntries(new Set()); }
 
+  function confirmBulkDateChange() {
+    if (!bulkDate) { toast.error("Select a date"); return; }
+    if (selectedEntries.size === 0) { toast.error("Select at least one entry"); return; }
+
+    const entries_to_change = filtered
+      .filter((e) => selectedEntries.has(`${e.txType}-${e.id}`))
+      .map((e) => ({ dateKey: e.dateKey, txType: e.txType, txId: e.id }));
+
+    startBulkChange(async () => {
+      const result = await bulkChangeDateAction({ entries: entries_to_change, newDate: bulkDate });
+      if (result.success) {
+        const d = result.data as any;
+        toast.success(`Date changed for ${d.succeeded} transaction${d.succeeded !== 1 ? "s" : ""}`);
+        if (d.failed?.length > 0) toast.error(`${d.failed.length} failed`);
+        clearSelection();
+        setBulkDate("");
+        loadEntries(selectedDate);
+      } else {
+        toast.error((result as any).error ?? "Bulk date change failed");
+      }
+    });
+  }
+
+  // ─── Delete ────────────────────────────────────────────────────────────
   function confirmDelete(entry: Entry) {
-    if (deleteReason.trim().length < 5) { toast.error("Enter a reason (min 5 characters)"); return; }
+    if (deleteReason.trim().length < 5) { toast.error("Enter a reason (min 5 chars)"); return; }
     startDelete(async () => {
-      const result = await deleteTransactionAction({
-        productId: entry.productId,
-        ledgerType: entry.ledgerType,
-        entryId: entry.id,
+      const result = await deleteInventoryEntryAction({
+        dateKey: entry.dateKey,
+        txType: entry.txType,
+        txId: entry.id,
         reason: deleteReason.trim(),
       });
       if (result.success) {
-        toast.success("Transaction deleted and stock reversed");
-        setDeleteTarget(null);
-        setDeleteReason("");
-        loadEntries(selectedDate);
-        router.refresh();
+        toast.success("Entry deleted and stock reversed");
+        setDeleteTarget(null); setDeleteReason("");
+        loadEntries(selectedDate); router.refresh();
       } else {
         toast.error((result as any).error ?? "Delete failed");
       }
     });
   }
 
+  // ─── Change date ───────────────────────────────────────────────────────
   function confirmChangeDate(entry: Entry) {
     if (!newDate) { toast.error("Select a new date"); return; }
     startChangeDate(async () => {
-      const result = await changeDateTransactionAction({
-        productId: entry.productId,
-        ledgerType: entry.ledgerType,
-        entryId: entry.id,
+      const result = await changeDateInventoryEntryAction({
+        dateKey: entry.dateKey,
+        txType: entry.txType,
+        txId: entry.id,
         newDate,
       });
       if (result.success) {
         toast.success("Date updated");
-        setChangeDateTarget(null);
-        setNewDate("");
+        setChangeDateTarget(null); setNewDate("");
         loadEntries(selectedDate);
       } else {
         toast.error((result as any).error ?? "Date change failed");
@@ -231,41 +247,43 @@ export function InventoryClient({
     });
   }
 
+  // ─── Edit quantity ─────────────────────────────────────────────────────
+  function startEditing(entry: Entry) { setEditingId(entry.id); setEditQty(String(entry.quantity)); setEditReason(""); }
+  function cancelEdit() { setEditingId(null); setEditQty(""); setEditReason(""); }
+
   function submitEdit(entry: Entry) {
     const newQty = parseInt(editQty, 10);
     if (isNaN(newQty) || newQty < 0) { toast.error("Enter a valid quantity"); return; }
-    if (editReason.trim().length < 5) { toast.error("Enter a reason (min 5 characters)"); return; }
+    if (editReason.trim().length < 5) { toast.error("Enter a reason (min 5 chars)"); return; }
     startEdit(async () => {
-      const result = await editTransactionAction({
-        productId: entry.productId,
-        ledgerType: entry.ledgerType,
-        entryId: entry.id,
+      const result = await editInventoryEntryAction({
+        dateKey: entry.dateKey,
+        txType: entry.txType,
+        txId: entry.id,
         newQuantity: newQty,
         reason: editReason.trim(),
       });
       if (result.success) {
-        toast.success("Transaction updated");
+        toast.success("Updated");
         cancelEdit();
-        loadEntries(selectedDate);
-        router.refresh();
+        loadEntries(selectedDate); router.refresh();
       } else {
         toast.error((result as any).error ?? "Update failed");
       }
     });
   }
 
+  // ─── Filter ────────────────────────────────────────────────────────────
   const filtered = entries.filter((e) => {
     if (search && !e.brandName.toLowerCase().includes(search.toLowerCase()) &&
         !e.genericName.toLowerCase().includes(search.toLowerCase())) return false;
-    if (typeFilter === "stock-in" && !(e.ledgerType === "main" && e.type === "IN")) return false;
-    if (typeFilter === "transfer" && e.reference !== "TRANSFER") return false;
-    if (typeFilter === "dispense" && e.reference !== "DISPENSE") return false;
+    if (typeFilter !== "all" && e.txType !== typeFilter) return false;
     return true;
   });
 
-  const stockInCount  = entries.filter((e) => e.ledgerType === "main" && e.type === "IN").length;
-  const transferCount = entries.filter((e) => e.reference === "TRANSFER" && e.ledgerType === "main").length;
-  const dispenseCount = entries.filter((e) => e.reference === "DISPENSE").length;
+  const stockInCount  = entries.filter((e) => e.txType === "stockIn").length;
+  const transferCount = entries.filter((e) => e.txType === "transfer").length;
+  const dispenseCount = entries.filter((e) => e.txType === "dispense").length;
 
   return (
     <div className="space-y-4">
@@ -278,14 +296,12 @@ export function InventoryClient({
 
         {/* Left — calendar + filters */}
         <div className="space-y-3 lg:w-64 lg:flex-shrink-0">
-
-          {/* Type filter pills */}
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">Show transactions</p>
             <div className="flex flex-wrap gap-1.5">
               {([
                 { key: "all",      label: "All",      icon: ClipboardList },
-                { key: "stock-in", label: "Stock IN", icon: Boxes },
+                { key: "stockIn",  label: "Stock IN", icon: Boxes },
                 { key: "transfer", label: "Transfer", icon: ArrowLeftRight },
                 { key: "dispense", label: "Dispense", icon: Pill },
               ] as const).map(({ key, label, icon: Icon }) => (
@@ -301,12 +317,7 @@ export function InventoryClient({
             </div>
           </div>
 
-          {/* Calendar */}
-          <CalendarPicker
-            activeDates={activeDates}
-            selected={selectedDate}
-            onSelect={setSelectedDate}
-          />
+          <CalendarPicker activeDates={activeDates} selected={selectedDate} onSelect={setSelectedDate} />
 
           {selectedDate && (
             <p className="text-xs text-center text-muted-foreground">
@@ -335,32 +346,29 @@ export function InventoryClient({
                 )}
                 {transferCount > 0 && (
                   <span className="flex items-center gap-1 rounded-full bg-primary/10 border border-primary/20 px-2.5 py-0.5 text-[11px] font-medium text-primary">
-                    <ArrowLeftRight className="h-3 w-3" />{transferCount} Transfer
+                    <ArrowLeftRight className="h-3 w-3" />{transferCount}
                   </span>
                 )}
                 {dispenseCount > 0 && (
                   <span className="flex items-center gap-1 rounded-full bg-destructive/10 border border-destructive/20 px-2.5 py-0.5 text-[11px] font-medium text-destructive">
-                    <Pill className="h-3 w-3" />{dispenseCount} Dispensed
+                    <Pill className="h-3 w-3" />{dispenseCount}
                   </span>
                 )}
               </div>
             )}
           </div>
 
-          {/* Bulk action toolbar */}
+          {/* Bulk toolbar */}
           {isAdmin && selectedEntries.size > 0 && (
             <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-primary/5 border-primary/20 px-4 py-2.5">
-              <span className="text-xs font-medium text-primary">
-                {selectedEntries.size} selected
-              </span>
+              <span className="text-xs font-medium text-primary">{selectedEntries.size} selected</span>
               <div className="flex items-center gap-2 ml-auto flex-wrap">
                 <span className="text-xs text-muted-foreground">Change all to:</span>
                 <input type="date" value={bulkDate} onChange={(e) => setBulkDate(e.target.value)}
                   className="h-7 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
                 <button onClick={confirmBulkDateChange} disabled={isBulkChanging || !bulkDate}
                   className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-                  <Calendar className="h-3.5 w-3.5" />
-                  Apply Date
+                  <Calendar className="h-3.5 w-3.5" />Apply Date
                 </button>
                 <button onClick={clearSelection}
                   className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted/50 transition-colors">
@@ -377,46 +385,52 @@ export function InventoryClient({
                 <thead>
                   <tr className="border-b bg-muted/40">
                     {isAdmin && (
-                    <th className="px-3 py-2.5 w-8">
-                      <input type="checkbox"
-                        checked={selectedEntries.size === filtered.length && filtered.length > 0}
-                        onChange={(e) => e.target.checked ? selectAll() : clearSelection()}
-                        className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer" />
-                    </th>
-                  )}
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-14">Time</th>
+                      <th className="px-3 py-2.5 w-8">
+                        <input type="checkbox"
+                          checked={selectedEntries.size === filtered.length && filtered.length > 0}
+                          onChange={(e) => e.target.checked ? selectAll() : clearSelection()}
+                          className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer" />
+                      </th>
+                    )}
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-14">Time</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase">Product</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-24">Type</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-28">Type</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase w-20">Qty</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase hidden md:table-cell">Details</th>
-                    {isAdmin && <th className="px-3 py-2.5 w-12" />}
+                    {isAdmin && <th className="px-3 py-2.5 w-28" />}
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={6} className="py-12 text-center">
+                    <tr><td colSpan={7} className="py-12 text-center">
                       <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto" />
                     </td></tr>
                   ) : !selectedDate ? (
-                    <tr><td colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
+                    <tr><td colSpan={7} className="py-12 text-center text-sm text-muted-foreground">
                       Select a date from the calendar
                     </td></tr>
                   ) : filtered.length === 0 ? (
-                    <tr><td colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
+                    <tr><td colSpan={7} className="py-12 text-center text-sm text-muted-foreground">
                       No transactions found
                     </td></tr>
                   ) : (
                     filtered.map((entry) => {
                       const { label, badgeVariant } = getEntryMeta(entry);
+                      const entryKey = `${entry.txType}-${entry.id}`;
                       const isEditingThis = editingId === entry.id;
+                      const isDeletingThis = deleteTarget?.id === entry.id;
+                      const isChangingDateThis = changeDateTarget?.id === entry.id;
+
                       return (
-                        <tr key={`${entry.ledgerType}-${entry.id}`}
-                          className={`border-b last:border-0 hover:bg-muted/20 transition-colors ${selectedEntries.has(`${entry.ledgerType}-${entry.id}`) ? "bg-primary/5" : ""}`}>
+                        <tr key={entryKey}
+                          className={`border-b last:border-0 hover:bg-muted/20 transition-colors ${
+                            selectedEntries.has(entryKey) ? "bg-primary/5" : ""
+                          }`}>
                           {isAdmin && (
                             <td className="px-3 py-2.5">
                               <input type="checkbox"
-                                checked={selectedEntries.has(`${entry.ledgerType}-${entry.id}`)}
-                                onChange={() => toggleSelect(`${entry.ledgerType}-${entry.id}`)}
+                                checked={selectedEntries.has(entryKey)}
+                                onChange={() => toggleSelect(entryKey)}
                                 className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer" />
                             </td>
                           )}
@@ -434,7 +448,7 @@ export function InventoryClient({
                             {isEditingThis ? (
                               <input type="number" min="0" value={editQty} autoFocus
                                 onChange={(e) => setEditQty(e.target.value)}
-                                className="h-7 w-16 rounded border border-primary bg-background px-2 text-xs tabular-nums focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+                                className="h-7 w-16 rounded border border-primary bg-background px-2 text-xs tabular-nums focus-visible:outline-none" />
                             ) : (
                               <span className="text-sm tabular-nums font-medium">
                                 {entry.quantity.toLocaleString()}
@@ -450,7 +464,16 @@ export function InventoryClient({
                               <input type="text" value={editReason}
                                 onChange={(e) => setEditReason(e.target.value)}
                                 placeholder="Reason for edit (required)"
-                                className="h-7 w-full rounded border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+                                className="h-7 w-full rounded border border-input bg-background px-2 text-xs focus-visible:outline-none" />
+                            ) : isDeletingThis ? (
+                              <input type="text" value={deleteReason} autoFocus
+                                onChange={(e) => setDeleteReason(e.target.value)}
+                                placeholder="Reason for deletion (required)"
+                                className="h-7 w-full rounded border border-destructive bg-background px-2 text-xs focus-visible:outline-none" />
+                            ) : isChangingDateThis ? (
+                              <input type="date" value={newDate}
+                                onChange={(e) => setNewDate(e.target.value)}
+                                className="h-7 rounded border border-primary bg-background px-2 text-xs focus-visible:outline-none" />
                             ) : (
                               <p className="text-xs text-muted-foreground truncate max-w-xs">
                                 {[
@@ -458,7 +481,6 @@ export function InventoryClient({
                                   entry.patientName && `Patient: ${entry.patientName}`,
                                   entry.prescriptionNo && `Rx: ${entry.prescriptionNo}`,
                                   entry.batch && entry.batch !== "MIGRATED" && `Batch: ${entry.batch}`,
-                                  entry.reason,
                                   entry.editReason && `✎ ${entry.editReason}`,
                                 ].filter(Boolean).join(" · ") || "—"}
                               </p>
@@ -477,33 +499,26 @@ export function InventoryClient({
                                     <X className="h-4 w-4" />
                                   </button>
                                 </div>
-                              ) : deleteTarget?.id === entry.id ? (
-                                <div className="flex items-center gap-1">
-                                  <input type="text" value={deleteReason}
-                                    onChange={(e) => setDeleteReason(e.target.value)}
-                                    placeholder="Reason…"
-                                    className="h-7 w-24 rounded border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+                              ) : isDeletingThis ? (
+                                <div className="flex gap-1">
                                   <button onClick={() => confirmDelete(entry)} disabled={isDeleting}
                                     className="rounded p-1 text-destructive hover:bg-destructive/10 transition-colors" title="Confirm delete">
-                                    <Check className="h-3.5 w-3.5" />
+                                    <Check className="h-4 w-4" />
                                   </button>
                                   <button onClick={() => { setDeleteTarget(null); setDeleteReason(""); }}
                                     className="rounded p-1 text-muted-foreground hover:bg-muted/50 transition-colors" title="Cancel">
-                                    <X className="h-3.5 w-3.5" />
+                                    <X className="h-4 w-4" />
                                   </button>
                                 </div>
-                              ) : changeDateTarget?.id === entry.id ? (
-                                <div className="flex items-center gap-1">
-                                  <input type="date" value={newDate}
-                                    onChange={(e) => setNewDate(e.target.value)}
-                                    className="h-7 rounded border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+                              ) : isChangingDateThis ? (
+                                <div className="flex gap-1">
                                   <button onClick={() => confirmChangeDate(entry)} disabled={isChangingDate}
                                     className="rounded p-1 text-success hover:bg-success/10 transition-colors" title="Save date">
-                                    <Check className="h-3.5 w-3.5" />
+                                    <Check className="h-4 w-4" />
                                   </button>
                                   <button onClick={() => { setChangeDateTarget(null); setNewDate(""); }}
                                     className="rounded p-1 text-muted-foreground hover:bg-muted/50 transition-colors" title="Cancel">
-                                    <X className="h-3.5 w-3.5" />
+                                    <X className="h-4 w-4" />
                                   </button>
                                 </div>
                               ) : (
@@ -516,7 +531,7 @@ export function InventoryClient({
                                     className="rounded p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
                                     <Calendar className="h-3.5 w-3.5" />
                                   </button>
-                                  <button onClick={() => { setDeleteTarget(entry); setDeleteReason(""); }} title="Delete & reverse"
+                                  <button onClick={() => { setDeleteTarget(entry); setDeleteReason(""); }} title="Delete & reverse stock"
                                     className="rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </button>

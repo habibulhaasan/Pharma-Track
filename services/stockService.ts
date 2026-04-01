@@ -1,352 +1,202 @@
 // services/stockService.ts
-// ALL stock mutations use Firestore transactions to prevent race conditions
 import "server-only";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { InsufficientStockError, NotFoundError } from "@/utils/errorHandler";
-import { logActivity } from "./ledgerService";
-import type { StockInInput, StockAdjustmentInput } from "@/schemas/stock";
+import type { StockAdjustmentInput } from "@/schemas/stock";
+import { saveTransaction, getDateKey } from "./transactionService";
 
-// Helper: convert a date string "YYYY-MM-DD" to a Firestore Timestamp at noon UTC
-// Falls back to server timestamp if no date provided
-function toTimestamp(dateStr?: string | null): Timestamp | ReturnType<typeof FieldValue.serverTimestamp> {
-  if (dateStr && typeof dateStr === "string" && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-    // Parse as local midnight — keeps the date correct regardless of server timezone
-    const [year, month, day] = dateStr.split("-").map(Number);
-    const d = new Date(Date.UTC(year, month - 1, day, 6, 0, 0)); // 06:00 UTC = noon Bangladesh (UTC+6)
-    if (!isNaN(d.getTime())) {
-      console.log("[toTimestamp] Using selected date:", dateStr, "→", d.toISOString());
-      return Timestamp.fromDate(d);
-    }
+function toTimestamp(dateStr?: string | null): any {
+  if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    return Timestamp.fromDate(new Date(Date.UTC(y, m - 1, d, 6, 0, 0)));
   }
-  console.log("[toTimestamp] No valid date, using serverTimestamp. Received:", dateStr);
-  return FieldValue.serverTimestamp() as any;
+  return FieldValue.serverTimestamp();
 }
 
-// ─── Stock IN (purchase received) ─────────────────────────────────────────
-export async function addMainStockIn(input: StockInInput & { entryDate?: string }, userId: string) {
+export async function addMainStockIn(input: {
+  productId: string; quantity: number; batch: string;
+  expiry?: string | null; price: number; supplier: string;
+  reference?: string; entryDate?: string;
+  brandName?: string; genericName?: string; unit?: string;
+}, userId: string) {
   const db = getAdminDb();
   const stockRef = db.collection("mainStock").doc(input.productId);
   const ledgerRef = stockRef.collection("mainLedger").doc();
-  const expiryTimestamp = input.expiry ? Timestamp.fromDate(new Date(input.expiry)) : null;
-  const entryTimestamp = toTimestamp(input.entryDate);
-
-  let beforeQty = 0;
-  let afterQty = 0;
+  const expiryTs = input.expiry ? Timestamp.fromDate(new Date(input.expiry)) : null;
+  const entryTs = toTimestamp(input.entryDate);
+  const dateKey = getDateKey(input.entryDate);
+  let beforeQty = 0, afterQty = 0;
 
   await db.runTransaction(async (tx) => {
-    const stockSnap = await tx.get(stockRef);
-    if (!stockSnap.exists) throw new NotFoundError("Product stock record");
-
-    beforeQty = stockSnap.data()!.quantity ?? 0;
+    const snap = await tx.get(stockRef);
+    if (!snap.exists) throw new NotFoundError("Product stock record");
+    beforeQty = snap.data()!.quantity ?? 0;
     afterQty = beforeQty + input.quantity;
-
-    tx.update(stockRef, {
-      quantity: afterQty,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
+    tx.update(stockRef, { quantity: afterQty, updatedAt: FieldValue.serverTimestamp() });
     tx.set(ledgerRef, {
-      type: "IN",
-      quantity: input.quantity,
-      batch: input.batch,
-      expiry: expiryTimestamp,
-      price: input.price,
-      supplier: input.supplier,
-      reference: input.reference ?? "",
-      timestamp: entryTimestamp,
-      userId,
+      type: "IN", quantity: input.quantity, batch: input.batch,
+      expiry: expiryTs, price: input.price, supplier: input.supplier,
+      reference: input.reference ?? "", timestamp: entryTs, userId,
     });
   });
 
-  await logActivity({
-    userId,
-    action: "STOCK_IN",
-    productId: input.productId,
-    beforeQty,
-    afterQty,
-    details: { batch: input.batch, supplier: input.supplier, price: input.price },
-  });
+  await saveTransaction("stockIn", {
+    productId: input.productId, brandName: input.brandName ?? "",
+    genericName: input.genericName ?? "", unit: input.unit ?? "",
+    quantity: input.quantity, price: input.price,
+    batch: input.batch, supplier: input.supplier,
+    userId, entryDate: dateKey, timestamp: entryTs as Timestamp,
+    ledgerCollection: "mainStock", ledgerSubCollection: "mainLedger", ledgerId: ledgerRef.id,
+  }).catch(console.error);
 
   return { beforeQty, afterQty };
 }
 
-// ─── Bulk Stock IN ─────────────────────────────────────────────────────────
-export async function bulkAddMainStockIn(
-  entries: (StockInInput & { entryDate?: string })[],
-  userId: string
-) {
-  const results = await Promise.allSettled(
-    entries.map((entry) => addMainStockIn(entry, userId))
-  );
-
+export async function bulkAddMainStockIn(entries: Array<{
+  productId: string; quantity: number; batch: string; expiry?: string | null;
+  price: number; supplier: string; reference?: string; entryDate?: string;
+  brandName?: string; genericName?: string; unit?: string;
+}>, userId: string) {
+  const results = await Promise.allSettled(entries.map((e) => addMainStockIn(e, userId)));
   const succeeded = results.filter((r) => r.status === "fulfilled").length;
-  const failed = results
-    .map((r, i) => ({ index: i, result: r }))
+  const failed = results.map((r, i) => ({ index: i, result: r }))
     .filter((r) => r.result.status === "rejected")
-    .map((r) => ({
-      index: r.index,
-      error: (r.result as PromiseRejectedResult).reason?.message ?? "Unknown error",
-    }));
-
+    .map((r) => ({ index: r.index, error: (r.result as PromiseRejectedResult).reason?.message ?? "Unknown" }));
   return { succeeded, failed, total: entries.length };
 }
 
-// ─── Transfer: Main → Pharmacy ────────────────────────────────────────────
-export async function transferToPharmacy(
-  input: {
-    productId: string;
-    quantity: number;
-    batch: string;
-    expiry?: string | null;
-    notes?: string;
-    entryDate?: string;
-  },
-  userId: string
-) {
+export async function transferToPharmacy(input: {
+  productId: string; quantity: number; batch: string;
+  expiry?: string | null; notes?: string; entryDate?: string;
+  brandName?: string; genericName?: string; unit?: string;
+}, userId: string) {
   const db = getAdminDb();
-  const mainStockRef = db.collection("mainStock").doc(input.productId);
-  const pharmStockRef = db.collection("pharmacyStock").doc(input.productId);
-  const mainLedgerRef = mainStockRef.collection("mainLedger").doc();
-  const pharmLedgerRef = pharmStockRef.collection("pharmacyLedger").doc();
-  const expiryTimestamp = input.expiry ? Timestamp.fromDate(new Date(input.expiry)) : null;
-  const entryTimestamp = toTimestamp(input.entryDate);
-
-  let beforeMainQty = 0;
-  let afterMainQty = 0;
+  const mainRef = db.collection("mainStock").doc(input.productId);
+  const pharmRef = db.collection("pharmacyStock").doc(input.productId);
+  const mainLedgerRef = mainRef.collection("mainLedger").doc();
+  const pharmLedgerRef = pharmRef.collection("pharmacyLedger").doc();
+  const expiryTs = input.expiry ? Timestamp.fromDate(new Date(input.expiry)) : null;
+  const entryTs = toTimestamp(input.entryDate);
+  const dateKey = getDateKey(input.entryDate);
+  let beforeMainQty = 0, afterMainQty = 0;
 
   await db.runTransaction(async (tx) => {
-    const [mainSnap, pharmSnap] = await Promise.all([
-      tx.get(mainStockRef),
-      tx.get(pharmStockRef),
-    ]);
-
+    const [mainSnap, pharmSnap] = await Promise.all([tx.get(mainRef), tx.get(pharmRef)]);
     if (!mainSnap.exists) throw new NotFoundError("Main stock record");
     if (!pharmSnap.exists) throw new NotFoundError("Pharmacy stock record");
-
     beforeMainQty = mainSnap.data()!.quantity ?? 0;
     const beforePharmQty = pharmSnap.data()!.quantity ?? 0;
-
     afterMainQty = beforeMainQty - input.quantity;
     if (afterMainQty < 0) throw new InsufficientStockError();
-
-    const afterPharmQty = beforePharmQty + input.quantity;
-
-    tx.update(mainStockRef, {
-      quantity: afterMainQty,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
-    tx.update(pharmStockRef, {
-      quantity: afterPharmQty,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
+    tx.update(mainRef, { quantity: afterMainQty, updatedAt: FieldValue.serverTimestamp() });
+    tx.update(pharmRef, { quantity: beforePharmQty + input.quantity, updatedAt: FieldValue.serverTimestamp() });
     tx.set(mainLedgerRef, {
-      type: "OUT",
-      reference: "TRANSFER",
-      quantity: input.quantity,
-      batch: input.batch,
-      expiry: expiryTimestamp,
-      price: 0,
-      supplier: "",
-      notes: input.notes ?? "",
-      timestamp: entryTimestamp,
-      userId,
+      type: "OUT", reference: "TRANSFER", quantity: input.quantity,
+      batch: input.batch, expiry: expiryTs, price: 0, supplier: "",
+      notes: input.notes ?? "", timestamp: entryTs, userId,
     });
-
     tx.set(pharmLedgerRef, {
-      type: "IN",
-      reference: "TRANSFER",
-      quantity: input.quantity,
-      batch: input.batch,
-      expiry: expiryTimestamp,
-      timestamp: entryTimestamp,
-      userId,
+      type: "IN", reference: "TRANSFER", quantity: input.quantity,
+      batch: input.batch, expiry: expiryTs, timestamp: entryTs, userId,
     });
   });
 
-  await logActivity({
-    userId,
-    action: "TRANSFER",
-    productId: input.productId,
-    beforeQty: beforeMainQty,
-    afterQty: afterMainQty,
-    details: { quantity: input.quantity, batch: input.batch },
-  });
+  await saveTransaction("transfer", {
+    productId: input.productId, brandName: input.brandName ?? "",
+    genericName: input.genericName ?? "", unit: input.unit ?? "",
+    quantity: input.quantity, batch: input.batch, notes: input.notes,
+    userId, entryDate: dateKey, timestamp: entryTs as Timestamp,
+    ledgerCollection: "mainStock", ledgerSubCollection: "mainLedger", ledgerId: mainLedgerRef.id,
+  }).catch(console.error);
 
   return { success: true };
 }
 
-// ─── Dispense from Pharmacy ────────────────────────────────────────────────
-export async function dispenseFromPharmacy(
-  input: {
-    productId: string;
-    quantity: number;
-    batch?: string;
-    price?: number;
-    patientName?: string;
-    prescriptionNo?: string;
-    entryDate?: string;
-  },
-  userId: string
-) {
+export async function dispenseFromPharmacy(input: {
+  productId: string; quantity: number; batch?: string; price?: number;
+  patientName?: string; prescriptionNo?: string; entryDate?: string;
+  brandName?: string; genericName?: string; unit?: string;
+}, userId: string) {
   const db = getAdminDb();
-  const pharmStockRef = db.collection("pharmacyStock").doc(input.productId);
-  const pharmLedgerRef = pharmStockRef.collection("pharmacyLedger").doc();
-  const saleRef = db.collection("sales").doc();
-  const entryTimestamp = toTimestamp(input.entryDate);
-
-  let beforeQty = 0;
-  let afterQty = 0;
+  const pharmRef = db.collection("pharmacyStock").doc(input.productId);
+  const ledgerRef = pharmRef.collection("pharmacyLedger").doc();
+  const entryTs = toTimestamp(input.entryDate);
+  const dateKey = getDateKey(input.entryDate);
+  let beforeQty = 0, afterQty = 0;
 
   await db.runTransaction(async (tx) => {
-    const pharmSnap = await tx.get(pharmStockRef);
-    if (!pharmSnap.exists) throw new NotFoundError("Pharmacy stock record");
-
-    beforeQty = pharmSnap.data()!.quantity ?? 0;
+    const snap = await tx.get(pharmRef);
+    if (!snap.exists) throw new NotFoundError("Pharmacy stock record");
+    beforeQty = snap.data()!.quantity ?? 0;
     afterQty = beforeQty - input.quantity;
     if (afterQty < 0) throw new InsufficientStockError();
-
-    tx.update(pharmStockRef, {
-      quantity: afterQty,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
-    tx.set(pharmLedgerRef, {
-      type: "OUT",
-      reference: "DISPENSE",
-      quantity: input.quantity,
-      batch: input.batch ?? "",
-      expiry: null,
-      patientName: input.patientName ?? "",
-      prescriptionNo: input.prescriptionNo ?? "",
-      timestamp: entryTimestamp,
-      userId,
-    });
-
-    tx.set(saleRef, {
-      productId: input.productId,
-      quantity: input.quantity,
-      price: input.price ?? 0,
-      patientName: input.patientName ?? "",
-      prescriptionNo: input.prescriptionNo ?? "",
-      timestamp: entryTimestamp,
-      userId,
+    tx.update(pharmRef, { quantity: afterQty, updatedAt: FieldValue.serverTimestamp() });
+    tx.set(ledgerRef, {
+      type: "OUT", reference: "DISPENSE", quantity: input.quantity,
+      batch: input.batch ?? "", expiry: null,
+      patientName: input.patientName ?? "", prescriptionNo: input.prescriptionNo ?? "",
+      timestamp: entryTs, userId,
     });
   });
 
-  await logActivity({
-    userId,
-    action: "DISPENSE",
-    productId: input.productId,
-    beforeQty,
-    afterQty,
-    details: {
-      quantity: input.quantity,
-      patientName: input.patientName,
-      prescriptionNo: input.prescriptionNo,
-    },
-  });
+  await saveTransaction("dispense", {
+    productId: input.productId, brandName: input.brandName ?? "",
+    genericName: input.genericName ?? "", unit: input.unit ?? "",
+    quantity: input.quantity, price: input.price ?? 0,
+    patientName: input.patientName, prescriptionNo: input.prescriptionNo,
+    userId, entryDate: dateKey, timestamp: entryTs as Timestamp,
+    ledgerCollection: "pharmacyStock", ledgerSubCollection: "pharmacyLedger", ledgerId: ledgerRef.id,
+  }).catch(console.error);
 
   return { success: true, beforeQty, afterQty };
 }
 
-// ─── Bulk Dispense ─────────────────────────────────────────────────────────
-export async function bulkDispense(
-  items: Array<{
-    productId: string;
-    quantity: number;
-    batch?: string;
-    price?: number;
-    entryDate?: string;
-  }>,
-  meta: { patientName?: string; prescriptionNo?: string; entryDate?: string },
-  userId: string
-) {
-  const results = await Promise.allSettled(
-    items.map((item) =>
-      dispenseFromPharmacy({ ...item, ...meta, entryDate: meta.entryDate }, userId)
-    )
-  );
-
+export async function bulkDispense(items: Array<{
+  productId: string; quantity: number; batch?: string; price?: number;
+  brandName?: string; genericName?: string; unit?: string;
+}>, meta: { patientName?: string; prescriptionNo?: string; entryDate?: string }, userId: string) {
+  const results = await Promise.allSettled(items.map((item) => dispenseFromPharmacy({ ...item, ...meta }, userId)));
   const succeeded = results.filter((r) => r.status === "fulfilled").length;
-  const failed = results
-    .map((r, i) => ({ index: i, result: r }))
+  const failed = results.map((r, i) => ({ index: i, result: r }))
     .filter((r) => r.result.status === "rejected")
-    .map((r) => ({
-      index: r.index,
-      error: (r.result as PromiseRejectedResult).reason?.message ?? "Unknown error",
-    }));
-
+    .map((r) => ({ index: r.index, error: (r.result as PromiseRejectedResult).reason?.message ?? "Unknown" }));
   return { succeeded, failed, total: items.length };
 }
 
-// ─── Admin Stock Adjustment ────────────────────────────────────────────────
 export async function adjustStock(input: StockAdjustmentInput, userId: string) {
   const db = getAdminDb();
-  const collectionName = input.stockType === "main" ? "mainStock" : "pharmacyStock";
-  const ledgerCollName = input.stockType === "main" ? "mainLedger" : "pharmacyLedger";
-
-  const stockRef = db.collection(collectionName).doc(input.productId);
-  const ledgerRef = stockRef.collection(ledgerCollName).doc();
-
+  const collName = input.stockType === "main" ? "mainStock" : "pharmacyStock";
+  const subColl = input.stockType === "main" ? "mainLedger" : "pharmacyLedger";
+  const stockRef = db.collection(collName).doc(input.productId);
+  const ledgerRef = stockRef.collection(subColl).doc();
   let beforeQty = 0;
 
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(stockRef);
     if (!snap.exists) throw new NotFoundError("Stock record");
-
     beforeQty = snap.data()!.quantity ?? 0;
     const diff = input.newQuantity - beforeQty;
-
-    tx.update(stockRef, {
-      quantity: input.newQuantity,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
+    tx.update(stockRef, { quantity: input.newQuantity, updatedAt: FieldValue.serverTimestamp() });
     tx.set(ledgerRef, {
-      type: "ADJUSTMENT",
-      quantity: Math.abs(diff),
-      adjustmentDelta: diff,
-      beforeQty,
-      afterQty: input.newQuantity,
-      batch: "",
-      expiry: null,
-      price: 0,
-      supplier: "",
-      reference: "ADMIN_ADJUSTMENT",
-      reason: input.reason,
-      timestamp: FieldValue.serverTimestamp(),
-      userId,
+      type: "ADJUSTMENT", quantity: Math.abs(diff), adjustmentDelta: diff,
+      beforeQty, afterQty: input.newQuantity, batch: "", expiry: null, price: 0,
+      supplier: "", reference: "ADMIN_ADJUSTMENT", reason: input.reason,
+      timestamp: FieldValue.serverTimestamp(), userId,
     });
-  });
-
-  await logActivity({
-    userId,
-    action: "STOCK_ADJUST",
-    productId: input.productId,
-    beforeQty,
-    afterQty: input.newQuantity,
-    details: { reason: input.reason, stockType: input.stockType },
   });
 
   return { beforeQty, afterQty: input.newQuantity };
 }
 
-// ─── Get current stock levels ──────────────────────────────────────────────
 export async function getAllStockLevels() {
   const db = getAdminDb();
   const [mainSnap, pharmSnap] = await Promise.all([
-    db.collection("mainStock").get(),
-    db.collection("pharmacyStock").get(),
+    db.collection("mainStock").get(), db.collection("pharmacyStock").get(),
   ]);
-
   const mainMap: Record<string, number> = {};
   const pharmMap: Record<string, number> = {};
-
   mainSnap.docs.forEach((d) => { mainMap[d.id] = d.data().quantity ?? 0; });
   pharmSnap.docs.forEach((d) => { pharmMap[d.id] = d.data().quantity ?? 0; });
-
   return { mainMap, pharmMap };
 }

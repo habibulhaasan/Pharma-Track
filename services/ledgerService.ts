@@ -1,76 +1,85 @@
 // services/ledgerService.ts
+// Only used by the Ledger page (product-centric view).
+// Reads from mainLedger and pharmacyLedger subcollections.
 import "server-only";
 import { getAdminDb } from "@/lib/firebaseAdmin";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { Timestamp } from "firebase-admin/firestore";
 
-// Activity log stored as: activityLog/{YYYY-MM-DD}/{autoId}
-// This keeps data organized by date and makes daily queries cheap (one collection read)
-export async function logActivity({
-  userId,
-  action,
-  productId,
-  beforeQty,
-  afterQty,
-  details,
-  ip,
-  entryDate,
-}: {
-  userId: string;
-  action: string;
-  productId?: string;
-  beforeQty?: number;
-  afterQty?: number;
-  details?: Record<string, unknown>;
-  ip?: string;
-  entryDate?: string; // YYYY-MM-DD — uses this date as the collection key if provided
-}) {
-  try {
-    const db = getAdminDb();
-
-    // Use entryDate if provided (for backdated entries), otherwise today
-    const dateKey = entryDate ?? new Date().toISOString().split("T")[0];
-
-    await db
-      .collection("activityLog")
-      .doc(dateKey)
-      .collection("entries")
-      .add({
-        userId,
-        action,
-        ...(productId && { productId }),
-        ...(beforeQty !== undefined && { beforeQty }),
-        ...(afterQty !== undefined && { afterQty }),
-        ...(details && { details }),
-        ...(ip && { ip }),
-        date: dateKey,
-        timestamp: FieldValue.serverTimestamp(),
-      });
-  } catch (error) {
-    // Non-critical — don't let logging failure break main operation
-    console.error("Failed to log activity:", error);
-  }
-}
-
-export async function getMainLedger(productId: string, limit = 50) {
+// Get ledger entries for a product filtered by month/year
+// Default: current month only (reduces reads dramatically)
+export async function getMainLedgerByMonth(
+  productId: string,
+  year: number,
+  month: number, // 1-12
+  limit = 200
+) {
   const db = getAdminDb();
+  const startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+  const endDate = new Date(Date.UTC(year, month, 0, 23, 59, 59));
+
   const snap = await db
     .collection("mainStock")
     .doc(productId)
     .collection("mainLedger")
-    .orderBy("timestamp", "desc")
+    .where("timestamp", ">=", Timestamp.fromDate(startDate))
+    .where("timestamp", "<=", Timestamp.fromDate(endDate))
+    .orderBy("timestamp", "asc")
     .limit(limit)
     .get();
+
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-export async function getPharmacyLedger(productId: string, limit = 50) {
+export async function getPharmacyLedgerByMonth(
+  productId: string,
+  year: number,
+  month: number,
+  limit = 200
+) {
   const db = getAdminDb();
+  const startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+  const endDate = new Date(Date.UTC(year, month, 0, 23, 59, 59));
+
   const snap = await db
     .collection("pharmacyStock")
     .doc(productId)
     .collection("pharmacyLedger")
-    .orderBy("timestamp", "desc")
+    .where("timestamp", ">=", Timestamp.fromDate(startDate))
+    .where("timestamp", "<=", Timestamp.fromDate(endDate))
+    .orderBy("timestamp", "asc")
     .limit(limit)
     .get();
+
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+// Get balance BEFORE the current month (opening balance)
+// This is a single aggregation — reads all entries before the start date
+export async function getOpeningBalance(
+  productId: string,
+  ledgerType: "main" | "pharmacy",
+  year: number,
+  month: number
+): Promise<number> {
+  const db = getAdminDb();
+  const collName = ledgerType === "main" ? "mainStock" : "pharmacyStock";
+  const subColl = ledgerType === "main" ? "mainLedger" : "pharmacyLedger";
+  const startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+
+  const snap = await db
+    .collection(collName)
+    .doc(productId)
+    .collection(subColl)
+    .where("timestamp", "<", Timestamp.fromDate(startDate))
+    .get();
+
+  let balance = 0;
+  snap.docs.forEach((d) => {
+    const data = d.data();
+    if (data.type === "IN") balance += data.quantity ?? 0;
+    else if (data.type === "OUT") balance -= data.quantity ?? 0;
+    else if (data.type === "ADJUSTMENT") balance += data.adjustmentDelta ?? 0;
+  });
+
+  return balance;
 }
