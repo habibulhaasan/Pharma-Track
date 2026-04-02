@@ -1,16 +1,28 @@
 // services/ledgerService.ts
-// Only used by the Ledger page (product-centric view).
-// Reads from mainLedger and pharmacyLedger subcollections.
 import "server-only";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { Timestamp } from "firebase-admin/firestore";
 
-// Get ledger entries for a product filtered by month/year
-// Default: current month only (reduces reads dramatically)
+// logActivity kept for backward compatibility — activity log removed,
+// all transaction history now stored in transactions/{date}/{type}/
+export async function logActivity(_params: {
+  userId: string;
+  action: string;
+  productId?: string;
+  beforeQty?: number;
+  afterQty?: number;
+  details?: Record<string, unknown>;
+  ip?: string;
+  entryDate?: string;
+}) {
+  // No-op — activity logging replaced by transactions collection
+  // Remove callers gradually to clean up
+}
+
 export async function getMainLedgerByMonth(
   productId: string,
   year: number,
-  month: number, // 1-12
+  month: number,
   limit = 200
 ) {
   const db = getAdminDb();
@@ -53,8 +65,6 @@ export async function getPharmacyLedgerByMonth(
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-// Get balance BEFORE the current month (opening balance)
-// This is a single aggregation — reads all entries before the start date
 export async function getOpeningBalance(
   productId: string,
   ledgerType: "main" | "pharmacy",
