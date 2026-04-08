@@ -16,6 +16,7 @@ import {
   changeDateInventoryEntryAction,
   bulkChangeDateAction,
 } from "@/app/actions/inventory";
+import { PrintRequisitionButton } from "@/components/print-requisition-button";
 
 // TxType matches what the actions expect
 type TxType = "stockIn" | "transfer" | "dispense";
@@ -332,6 +333,7 @@ export function InventoryClient({
           {/* Search + summary */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="relative flex-1">
+              
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <input type="text" placeholder="Search product…" value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -354,6 +356,13 @@ export function InventoryClient({
                     <Pill className="h-3 w-3" />{dispenseCount}
                   </span>
                 )}
+
+                {typeFilter === "transfer" && selectedDate && (
+                <PrintRequisitionButton
+                  date={selectedDate}
+                  count={transferCount}
+                />
+              )}
               </div>
             )}
           </div>

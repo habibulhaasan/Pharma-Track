@@ -25,6 +25,7 @@ const navItems = [
   { href: "/admin/users",            label: "Users",           icon: Users,        adminOnly: true },
   { href: "/admin/stock-adjustment",   label: "Adjustments",     icon: Settings,     adminOnly: true },
   { href: "/admin/adjustment-history", label: "Adj. History",    icon: History,      adminOnly: true },
+  { href: "/admin/settings", label: "Settings", icon: Settings, adminOnly: true }
 ];
 
 interface SidebarProps {
