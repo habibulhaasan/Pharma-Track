@@ -30,7 +30,23 @@ export default async function RequisitionPage({
     db.collection("products").get(),
   ]);
 
-  const letterhead = letterheadDoc.exists ? letterheadDoc.data()! : {};
+  // Serialize letterhead: extract only plain string fields to avoid passing
+  // Firestore Timestamp objects (e.g. updatedAt) to the Client Component,
+  // which causes the "Classes or null prototypes are not supported" error.
+  const rawLetterhead = letterheadDoc.exists ? letterheadDoc.data()! : {};
+  const letterhead = {
+    logoUrl:                 typeof rawLetterhead.logoUrl === "string"                 ? rawLetterhead.logoUrl                 : undefined,
+    officeName:              typeof rawLetterhead.officeName === "string"              ? rawLetterhead.officeName              : undefined,
+    officeAddress:           typeof rawLetterhead.officeAddress === "string"           ? rawLetterhead.officeAddress           : undefined,
+    submittedToName:         typeof rawLetterhead.submittedToName === "string"         ? rawLetterhead.submittedToName         : undefined,
+    submittedToDesignation:  typeof rawLetterhead.submittedToDesignation === "string"  ? rawLetterhead.submittedToDesignation  : undefined,
+    submittedToOfficeName:   typeof rawLetterhead.submittedToOfficeName === "string"   ? rawLetterhead.submittedToOfficeName   : undefined,
+    submittedToAddress:      typeof rawLetterhead.submittedToAddress === "string"      ? rawLetterhead.submittedToAddress      : undefined,
+    requisitorName:          typeof rawLetterhead.requisitorName === "string"          ? rawLetterhead.requisitorName          : undefined,
+    requisitorDesignation:   typeof rawLetterhead.requisitorDesignation === "string"   ? rawLetterhead.requisitorDesignation   : undefined,
+    requisitorOfficeName:    typeof rawLetterhead.requisitorOfficeName === "string"    ? rawLetterhead.requisitorOfficeName    : undefined,
+    requisitorAddress:       typeof rawLetterhead.requisitorAddress === "string"       ? rawLetterhead.requisitorAddress       : undefined,
+  };
 
   // Build product map for type-based sorting
   const productMap: Record<string, string> = {};
