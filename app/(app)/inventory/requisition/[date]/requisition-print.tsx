@@ -1,9 +1,15 @@
 "use client";
-// app/(app)/inventory/requisition/[date]/requisition-print.tsx
-// Full A4 printable requisition. Auto-opens print dialog on load.
-// Two-column product layout matching the hand-drawn sketch.
-import { useEffect } from "react";
-import { Printer } from "lucide-react";
+// app/(print)/inventory/requisition/[date]/requisition-print.tsx
+//
+// Renders a professional A4 inventory requisition.
+// • Organisation name auto-shrinks via JS to always fit one line
+// • No generic name shown — brand name only
+// • No blank padding rows — table ends at last real entry
+// • Print renders the document only, zero app chrome
+// • window.print() triggers the browser's native PDF dialog (not a screenshot)
+
+import { useEffect, useRef } from "react";
+import { Printer, X } from "lucide-react";
 
 interface Entry {
   id: string;
@@ -40,371 +46,445 @@ export function RequisitionPrint({
   entries: Entry[];
   letterhead: Letterhead;
 }) {
-  // Auto-trigger print dialog after page loads
+  const orgNameRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scale org name font so it always fits on one line
   useEffect(() => {
-    const timer = setTimeout(() => window.print(), 800);
-    return () => clearTimeout(timer);
+    const el = orgNameRef.current;
+    if (!el) return;
+    let size = 18;
+    el.style.fontSize = `${size}pt`;
+    while (el.scrollWidth > el.clientWidth && size > 8) {
+      size -= 0.5;
+      el.style.fontSize = `${size}pt`;
+    }
+  }, [letterhead.officeName]);
+
+  // Auto-trigger print dialog (generates real PDF via browser engine)
+  useEffect(() => {
+    const t = setTimeout(() => window.print(), 700);
+    return () => clearTimeout(t);
   }, []);
 
-  // Split entries into two columns
-  const half = Math.ceil(entries.length / 2);
-  const leftCol = entries.slice(0, half);
+  // Two-column split — only real entries, NO padding rows
+  const half     = Math.ceil(entries.length / 2);
+  const leftCol  = entries.slice(0, half);
   const rightCol = entries.slice(half);
-
-  // Make both columns equal length by padding
-  const maxRows = Math.max(leftCol.length, rightCol.length);
-  const paddedLeft = [...leftCol, ...Array(maxRows - leftCol.length).fill(null)];
-  const paddedRight = [...rightCol, ...Array(maxRows - rightCol.length).fill(null)];
+  const maxRows  = Math.max(leftCol.length, rightCol.length);
+  const totalQty = entries.reduce((s, e) => s + e.quantity, 0);
 
   return (
     <>
-      {/* Print button — hidden during actual print */}
-      <div className="no-print fixed top-4 right-4 z-50 flex gap-2">
-        <button
-          onClick={() => window.print()}
-          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg hover:bg-primary/90 transition-colors"
-        >
-          <Printer className="h-4 w-4" />
+      {/* ── Screen-only controls ──────────────────────────── */}
+      <div className="rq-toolbar no-print">
+        <button className="rq-btn-print" onClick={() => window.print()}>
+          <Printer size={14} strokeWidth={2} />
           Print / Save PDF
         </button>
-        <button
-          onClick={() => window.close()}
-          className="flex items-center gap-2 rounded-lg border bg-background px-4 py-2 text-sm font-medium shadow-lg hover:bg-muted/50 transition-colors"
-        >
+        <button className="rq-btn-close" onClick={() => window.close()}>
+          <X size={14} strokeWidth={2} />
           Close
         </button>
       </div>
 
-      {/* A4 Page */}
-      <div className="a4-page">
+      {/* ── A4 Document ───────────────────────────────────── */}
+      <div className="rq-page">
 
-        {/* ── LETTERHEAD ─────────────────────────────────────── */}
-        <div className="letterhead">
-          {/* Logo + Office info */}
-          <div className="letterhead-top">
-            <div className="logo-box">
+        {/* ═══ LETTERHEAD ═══════════════════════════════════ */}
+        <header className="rq-lh">
+          <div className="rq-lh-row">
+
+            {/* Logo */}
+            <div className="rq-logo-wrap">
               {letterhead.logoUrl ? (
-                <img src={letterhead.logoUrl} alt="Logo" className="logo-img" />
+                <img src={letterhead.logoUrl} alt="Logo" className="rq-logo-img" />
               ) : (
-                <div className="logo-placeholder">LOGO</div>
+                <div className="rq-logo-placeholder">LOGO</div>
               )}
             </div>
 
-            <div className="office-center">
-              <div className="office-name">
-                {letterhead.officeName || "Office Name"}
+            {/* Centre — org name + address */}
+            <div className="rq-lh-centre">
+              <div className="rq-org-name" ref={orgNameRef}>
+                {letterhead.officeName || "Organisation Name"}
               </div>
-              <div className="office-address">
-                {letterhead.officeAddress || "Office Address"}
-              </div>
+              {letterhead.officeAddress && (
+                <div className="rq-org-address">{letterhead.officeAddress}</div>
+              )}
             </div>
 
-            <div className="date-box">
-              <div className="date-label">Date:</div>
-              <div className="date-value">{date}</div>
+            {/* Date */}
+            <div className="rq-lh-date">
+              <span className="rq-date-label">Date</span>
+              <span className="rq-date-value">{date}</span>
             </div>
+
           </div>
 
-          {/* Divider */}
-          <div className="header-divider" />
+          {/* Heavy rule */}
+          <div className="rq-rule-heavy" />
 
-          {/* Requisition For title */}
-          <div className="requisition-title-wrap">
-            <div className="requisition-title">Requisition For</div>
+          {/* Title badge */}
+          <div className="rq-title-row">
+            <span className="rq-title-badge">INVENTORY REQUISITION</span>
           </div>
-        </div>
+        </header>
 
-        {/* ── PRODUCT TABLE ──────────────────────────────────── */}
-        <table className="product-table">
+        {/* ═══ MEDICINE TABLE ═══════════════════════════════ */}
+        <table className="rq-table">
           <thead>
             <tr>
-              <th className="col-sl">Sl.</th>
-              <th className="col-name">Medicine Name</th>
-              <th className="col-qty">QTY</th>
-              <th className="col-divider"></th>
-              <th className="col-sl">Sl.</th>
-              <th className="col-name">Medicine Name</th>
-              <th className="col-qty">QTY</th>
+              <th className="rq-th rq-col-sl">Sl.</th>
+              <th className="rq-th rq-col-name">Medicine Name</th>
+              <th className="rq-th rq-col-qty">Qty</th>
+              <th className="rq-th rq-col-gap" aria-hidden="true" />
+              <th className="rq-th rq-col-sl">Sl.</th>
+              <th className="rq-th rq-col-name">Medicine Name</th>
+              <th className="rq-th rq-col-qty">Qty</th>
             </tr>
           </thead>
           <tbody>
             {Array.from({ length: maxRows }).map((_, i) => {
-              const left = paddedLeft[i];
-              const right = paddedRight[i];
+              const L = leftCol[i]  ?? null;
+              const R = rightCol[i] ?? null;
               return (
-                <tr key={i} className={i % 2 === 0 ? "row-even" : "row-odd"}>
-                  {/* Left column */}
-                  <td className="col-sl">{left ? i + 1 : ""}</td>
-                  <td className="col-name">
-                    {left ? (
-                      <>
-                        <span className="med-brand">{left.brandName}</span>
-                        {left.genericName && left.genericName !== left.brandName && (
-                          <span className="med-generic"> ({left.genericName})</span>
-                        )}
-                      </>
-                    ) : ""}
-                  </td>
-                  <td className="col-qty">{left ? `${left.quantity} ${left.unit}` : ""}</td>
+                <tr key={i} className={i % 2 === 0 ? "rq-row-even" : "rq-row-odd"}>
+                  <td className="rq-td rq-col-sl">{L ? i + 1 : ""}</td>
+                  <td className="rq-td rq-col-name">{L ? L.brandName : ""}</td>
+                  <td className="rq-td rq-col-qty">{L ? `${L.quantity} ${L.unit}` : ""}</td>
 
-                  {/* Center divider */}
-                  <td className="col-divider"></td>
+                  <td className="rq-td rq-col-gap" aria-hidden="true" />
 
-                  {/* Right column */}
-                  <td className="col-sl">{right ? half + i + 1 : ""}</td>
-                  <td className="col-name">
-                    {right ? (
-                      <>
-                        <span className="med-brand">{right.brandName}</span>
-                        {right.genericName && right.genericName !== right.brandName && (
-                          <span className="med-generic"> ({right.genericName})</span>
-                        )}
-                      </>
-                    ) : ""}
-                  </td>
-                  <td className="col-qty">{right ? `${right.quantity} ${right.unit}` : ""}</td>
+                  <td className="rq-td rq-col-sl">{R ? half + i + 1 : ""}</td>
+                  <td className="rq-td rq-col-name">{R ? R.brandName : ""}</td>
+                  <td className="rq-td rq-col-qty">{R ? `${R.quantity} ${R.unit}` : ""}</td>
                 </tr>
               );
             })}
-
-            {/* Extra blank rows to fill page — minimum 25 rows total */}
-            {Array.from({ length: Math.max(0, 25 - maxRows) }).map((_, i) => (
-              <tr key={`blank-${i}`} className={i % 2 === 0 ? "row-even" : "row-odd"}>
-                <td className="col-sl"></td>
-                <td className="col-name"></td>
-                <td className="col-qty"></td>
-                <td className="col-divider"></td>
-                <td className="col-sl"></td>
-                <td className="col-name"></td>
-                <td className="col-qty"></td>
-              </tr>
-            ))}
           </tbody>
         </table>
 
-        {/* ── SIGNATURES ─────────────────────────────────────── */}
-        <div className="signatures">
-          <div className="sig-block">
-            <div className="sig-line"></div>
-            <div className="sig-name">{letterhead.submittedToName || "Submitted To Name"}</div>
-            <div className="sig-detail">{letterhead.submittedToDesignation || "Designation"}</div>
-            <div className="sig-detail">{letterhead.submittedToOfficeName || "Office Name"}</div>
-            <div className="sig-detail">{letterhead.submittedToAddress || "Address"}</div>
+        {/* ═══ SUMMARY ══════════════════════════════════════ */}
+        <div className="rq-summary">
+          <span>Total items: <strong>{entries.length}</strong></span>
+          <span className="rq-summary-sep">|</span>
+          <span>Total quantity: <strong>{totalQty.toLocaleString()}</strong></span>
+        </div>
+
+        {/* ═══ SIGNATURES ═══════════════════════════════════ */}
+        <div className="rq-sigs">
+          <div className="rq-sig rq-sig-left">
+            <div className="rq-sig-line" />
+            <p className="rq-sig-name">{letterhead.submittedToName || "Submitted To"}</p>
+            {letterhead.submittedToDesignation && (
+              <p className="rq-sig-detail">{letterhead.submittedToDesignation}</p>
+            )}
+            {letterhead.submittedToOfficeName && (
+              <p className="rq-sig-detail">{letterhead.submittedToOfficeName}</p>
+            )}
+            {letterhead.submittedToAddress && (
+              <p className="rq-sig-detail">{letterhead.submittedToAddress}</p>
+            )}
           </div>
 
-          <div className="sig-block sig-right">
-            <div className="sig-line"></div>
-            <div className="sig-name">{letterhead.requisitorName || "Requisitor Name"}</div>
-            <div className="sig-detail">{letterhead.requisitorDesignation || "Designation"}</div>
-            <div className="sig-detail">{letterhead.requisitorOfficeName || "Office Name"}</div>
-            <div className="sig-detail">{letterhead.requisitorAddress || "Address"}</div>
+          <div className="rq-sig rq-sig-right">
+            <div className="rq-sig-line" />
+            <p className="rq-sig-name">{letterhead.requisitorName || "Requisitor"}</p>
+            {letterhead.requisitorDesignation && (
+              <p className="rq-sig-detail">{letterhead.requisitorDesignation}</p>
+            )}
+            {letterhead.requisitorOfficeName && (
+              <p className="rq-sig-detail">{letterhead.requisitorOfficeName}</p>
+            )}
+            {letterhead.requisitorAddress && (
+              <p className="rq-sig-detail">{letterhead.requisitorAddress}</p>
+            )}
           </div>
         </div>
 
-        {/* Total count */}
-        <div className="total-line">
-          Total medicines: <strong>{entries.length}</strong> &nbsp;|&nbsp;
-          Total quantity: <strong>{entries.reduce((s, e) => s + e.quantity, 0).toLocaleString()}</strong> pieces
-        </div>
-      </div>
+      </div>{/* /rq-page */}
 
-      {/* ── STYLES ─────────────────────────────────────────── */}
+      {/* ══════════════════════════════════════════════════════
+          STYLES — rq- prefix keeps these isolated from globals
+         ══════════════════════════════════════════════════════ */}
       <style>{`
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        /* ── Reset ─────────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        body {
-          background: #e5e5e5;
-          font-family: 'Times New Roman', serif;
+        html, body {
+          background: #c8c8c8;
+          font-family: 'Times New Roman', Times, serif;
+          color: #111;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
         }
 
-        .no-print { }
+        /* ── Toolbar ───────────────────────────────────────── */
+        .rq-toolbar {
+          position: fixed;
+          top: 16px;
+          right: 20px;
+          z-index: 999;
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
 
-        /* A4 page */
-        .a4-page {
+        .rq-btn-print, .rq-btn-close {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 18px;
+          font-size: 12.5px;
+          font-family: system-ui, -apple-system, sans-serif;
+          font-weight: 500;
+          border-radius: 5px;
+          cursor: pointer;
+          border: none;
+          letter-spacing: .01em;
+          transition: background .12s;
+        }
+        .rq-btn-print {
+          background: #1a4fd6;
+          color: #fff;
+          box-shadow: 0 2px 8px rgba(26,79,214,.30);
+        }
+        .rq-btn-print:hover { background: #1540b8; }
+        .rq-btn-close {
+          background: #fff;
+          color: #333;
+          border: 1.5px solid #ccc;
+        }
+        .rq-btn-close:hover { background: #f2f2f2; }
+
+        /* ── A4 page (screen preview) ──────────────────────── */
+        .rq-page {
           width: 210mm;
           min-height: 297mm;
-          margin: 20px auto;
-          background: white;
-          padding: 15mm 15mm 12mm 15mm;
-          box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+          margin: 28px auto 48px;
+          background: #fff;
+          padding: 13mm 16mm 13mm 16mm;
+          box-shadow: 0 8px 40px rgba(0,0,0,.22);
           display: flex;
           flex-direction: column;
         }
 
-        /* Letterhead */
-        .letterhead { margin-bottom: 6mm; }
+        /* ── Letterhead ────────────────────────────────────── */
+        .rq-lh { margin-bottom: 4mm; }
 
-        .letterhead-top {
+        .rq-lh-row {
           display: flex;
-          align-items: flex-start;
-          gap: 8mm;
+          align-items: center;
+          gap: 5mm;
+          width: 100%;
           margin-bottom: 3mm;
         }
 
-        .logo-box { flex-shrink: 0; }
+        .rq-logo-wrap { flex-shrink: 0; }
 
-        .logo-img {
+        .rq-logo-img {
+          display: block;
           width: 20mm;
           height: 20mm;
           object-fit: contain;
         }
 
-        .logo-placeholder {
+        .rq-logo-placeholder {
           width: 20mm;
           height: 20mm;
-          border: 1.5px solid #333;
+          border: 1px dashed #ccc;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 9pt;
-          color: #666;
+          font-size: 7.5pt;
+          color: #aaa;
+          letter-spacing: .5px;
+          font-family: system-ui, sans-serif;
         }
 
-        .office-center {
+        /* Centre column: clips to available width so JS can measure */
+        .rq-lh-centre {
           flex: 1;
           text-align: center;
+          overflow: hidden;
+          min-width: 0;
         }
 
-        .office-name {
-          font-size: 14pt;
-          font-weight: bold;
-          line-height: 1.3;
+        /*
+         * Org name — always one line.
+         * JS sets font-size starting at 18pt and steps down by 0.5pt
+         * until scrollWidth <= clientWidth.
+         */
+        .rq-org-name {
+          font-size: 18pt;          /* JS overrides this */
+          font-weight: 700;
+          line-height: 1.15;
+          white-space: nowrap;      /* single line enforced */
+          overflow: hidden;
+          width: 100%;
+          display: block;
         }
 
-        .office-address {
-          font-size: 10pt;
-          color: #444;
-          margin-top: 1mm;
+        /* Address is slightly smaller than the org name */
+        .rq-org-address {
+          font-size: 9pt;           /* always 9pt — just smaller than org name */
+          color: #555;
+          margin-top: 1.5mm;
           line-height: 1.4;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
-        .date-box {
+        .rq-lh-date {
           flex-shrink: 0;
+          min-width: 28mm;
           text-align: right;
-          font-size: 10pt;
+          display: flex;
+          flex-direction: column;
+          gap: 1mm;
+        }
+        .rq-date-label {
+          font-size: 7pt;
+          font-weight: 700;
+          letter-spacing: .08em;
+          text-transform: uppercase;
+          color: #777;
+        }
+        .rq-date-value { font-size: 9.5pt; }
+
+        .rq-rule-heavy {
+          border: none;
+          border-top: 2px solid #111;
+          margin-bottom: 3mm;
         }
 
-        .date-label { font-weight: bold; }
-        .date-value { margin-top: 1mm; }
-
-        .header-divider {
-          border-top: 2px solid #333;
-          margin: 3mm 0;
-        }
-
-        .requisition-title-wrap {
+        .rq-title-row {
           text-align: center;
           margin-bottom: 4mm;
         }
-
-        .requisition-title {
+        .rq-title-badge {
           display: inline-block;
-          border: 2px solid #333;
-          padding: 2mm 8mm;
-          font-size: 13pt;
-          font-weight: bold;
-          letter-spacing: 1px;
+          border: 1.5px solid #222;
+          padding: 1.5mm 9mm;
+          font-size: 10.5pt;
+          font-weight: 700;
+          letter-spacing: 2.5px;
         }
 
-        /* Product table */
-        .product-table {
+        /* ── Medicine table ────────────────────────────────── */
+        .rq-table {
           width: 100%;
           border-collapse: collapse;
-          flex: 1;
-          font-size: 10pt;
+          font-size: 9pt;
         }
 
-        .product-table thead tr {
-          background: #f0f0f0;
-          border-top: 2px solid #333;
-          border-bottom: 2px solid #333;
+        .rq-table thead tr {
+          background: #efefef;
+          border-top: 1.5px solid #222;
+          border-bottom: 1.5px solid #222;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
         }
 
-        .product-table th {
-          padding: 2mm 2mm;
+        .rq-th {
+          padding: 1.8mm 2.5mm;
+          font-size: 9pt;
+          font-weight: 700;
           text-align: left;
-          font-weight: bold;
-          font-size: 10pt;
         }
 
-        .product-table td {
-          padding: 1.5mm 2mm;
-          font-size: 9.5pt;
-          border-bottom: 0.5px solid #ddd;
-          vertical-align: top;
+        .rq-td {
+          padding: 1.4mm 2.5mm;
+          font-size: 9pt;
+          border-bottom: 0.4px solid #e4e4e4;
+          vertical-align: middle;
         }
 
-        .col-sl { width: 8mm; text-align: center; }
-        .col-name { }
-        .col-qty { width: 20mm; text-align: center; white-space: nowrap; }
-        .col-divider {
-          width: 3mm;
-          border-left: 1.5px solid #999 !important;
-          border-right: 1.5px solid #999 !important;
-          background: #f8f8f8;
+        .rq-col-sl   { width: 9mm;  text-align: center; }
+        .rq-col-name { /* flex remaining width */ }
+        .rq-col-qty  { width: 22mm; text-align: center; white-space: nowrap; }
+        .rq-col-gap  {
+          width: 5mm;
           padding: 0 !important;
+          border-left:  1.5px solid #bbb !important;
+          border-right: 1.5px solid #bbb !important;
+          background: #f8f8f8;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
         }
 
-        .row-even { background: white; }
-        .row-odd { background: #fafafa; }
+        .rq-row-even { background: #fff; }
+        .rq-row-odd  { background: #fafafa; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
-        .med-brand { font-weight: 500; }
-        .med-generic { font-size: 8.5pt; color: #555; }
+        /* ── Summary ───────────────────────────────────────── */
+        .rq-summary {
+          display: flex;
+          align-items: center;
+          gap: 6mm;
+          justify-content: center;
+          margin-top: 3mm;
+          padding-top: 2.5mm;
+          border-top: 1px solid #ddd;
+          font-size: 8.5pt;
+          color: #666;
+        }
+        .rq-summary strong { color: #111; }
+        .rq-summary-sep { color: #ccc; }
 
-        /* Signatures */
-        .signatures {
+        /* ── Signatures ────────────────────────────────────── */
+        .rq-sigs {
           display: flex;
           justify-content: space-between;
-          margin-top: 12mm;
-          padding-top: 4mm;
+          margin-top: 14mm;
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
 
-        .sig-block { width: 45%; }
-        .sig-right { text-align: right; }
+        .rq-sig { width: 42%; }
+        .rq-sig-right { text-align: right; }
 
-        .sig-line {
-          border-top: 1.5px solid #333;
+        .rq-sig-line {
+          border-top: 1.5px solid #222;
           margin-bottom: 2mm;
         }
-
-        .sig-name {
-          font-size: 10.5pt;
-          font-weight: bold;
-          line-height: 1.4;
-        }
-
-        .sig-detail {
+        .rq-sig-name {
           font-size: 9.5pt;
-          color: #444;
-          line-height: 1.4;
+          font-weight: 700;
+          line-height: 1.5;
+        }
+        .rq-sig-detail {
+          font-size: 8.5pt;
+          color: #555;
+          line-height: 1.5;
         }
 
-        .total-line {
-          text-align: center;
-          font-size: 9pt;
-          color: #666;
-          margin-top: 4mm;
-          border-top: 0.5px solid #ddd;
-          padding-top: 2mm;
-        }
-
-        /* Print styles */
+        /* ═══════════════════════════════════════════════════
+           PRINT
+           @page supplies physical margins → browser generates
+           a proper page-geometry PDF, not a screen screenshot.
+           .rq-page is then reset to fill that canvas exactly.
+           ═══════════════════════════════════════════════════ */
         @media print {
-          body { background: white; margin: 0; }
+          @page {
+            size: A4 portrait;
+            margin: 13mm 16mm 13mm 16mm;
+          }
+
+          html, body {
+            background: #fff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
 
           .no-print { display: none !important; }
 
-          .a4-page {
-            width: 100%;
-            min-height: 100vh;
-            margin: 0;
-            padding: 12mm 14mm 10mm 14mm;
-            box-shadow: none;
-          }
-
-          @page {
-            size: A4 portrait;
-            margin: 0;
+          .rq-page {
+            width:      100%  !important;
+            min-height: 0     !important;
+            margin:     0     !important;
+            padding:    0     !important;
+            box-shadow: none  !important;
           }
         }
       `}</style>
