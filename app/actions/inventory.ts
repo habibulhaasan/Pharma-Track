@@ -1,16 +1,22 @@
 "use server";
 // app/actions/inventory.ts
+// Full CRUD — every operation updates ALL linked documents atomically:
+//   transactions/{date}/{type}/{id}
+//   mainLedger or pharmacyLedger
+//   mainStock or pharmacyStock quantities
+// Transfer operations update BOTH ledgers and BOTH stock documents.
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { requireAuth } from "@/lib/auth";
 import { Timestamp, FieldValue } from "firebase-admin/firestore";
 import {
   getActiveDates,
   getTransactionsByDate,
-  changeTransactionDate,
+  updateActiveDates,
   type TxType,
 } from "@/services/transactionService";
+import { toTimestamp } from "@/services/stockService";
 
-// ─── Get active dates from _meta (1 read) ────────────────────────────────
+// ─── Get active dates (1 read from _meta) ────────────────────────────────
 export async function getActiveDatesAction() {
   await requireAuth();
   try {
@@ -20,7 +26,7 @@ export async function getActiveDatesAction() {
   }
 }
 
-// ─── Get all transactions for a specific date ─────────────────────────────
+// ─── Get all transactions for a date ─────────────────────────────────────
 export async function getDayInventoryAction(date: string) {
   await requireAuth();
   try {
@@ -53,17 +59,11 @@ export async function getDayInventoryAction(date: string) {
   }
 }
 
-// ─── Delete transaction + hard delete ledger entry + reverse stock ─────────
+// ─── DELETE — hard delete + reverse ALL linked documents ─────────────────
 export async function deleteInventoryEntryAction({
-  dateKey,
-  txType,
-  txId,
-  reason,
+  dateKey, txType, txId, reason,
 }: {
-  dateKey: string;
-  txType: TxType;
-  txId: string;
-  reason: string;
+  dateKey: string; txType: TxType; txId: string; reason: string;
 }) {
   const user = await requireAuth();
   if (user.role !== "admin") return { success: false, error: "Admin only" };
@@ -71,125 +71,264 @@ export async function deleteInventoryEntryAction({
 
   const db = getAdminDb();
 
-  // Read tx doc first
+  // Step 1: Read transaction doc to get all linked IDs
   const txRef = db.collection("transactions").doc(dateKey).collection(txType).doc(txId);
   const txDoc = await txRef.get();
   if (!txDoc.exists) return { success: false, error: "Entry not found" };
 
   const txData = txDoc.data()!;
-  const { productId, quantity, ledgerCollection, ledgerSubCollection, ledgerId } = txData;
+  const { productId, quantity, ledgerCollection, ledgerSubCollection, ledgerId, pharmLedgerId } = txData;
 
-  await db.runTransaction(async (tx) => {
-    const stockRef = db.collection(ledgerCollection as string).doc(productId);
-    const ledgerRef = db.collection(ledgerCollection as string)
-      .doc(productId).collection(ledgerSubCollection as string).doc(ledgerId);
+  try {
+    await db.runTransaction(async (tx) => {
+      // Read all stock docs we need to update
+      const mainStockRef = db.collection("mainStock").doc(productId);
+      const pharmStockRef = db.collection("pharmacyStock").doc(productId);
 
-    const stockSnap = await tx.get(stockRef);
-    const currentQty = stockSnap.data()?.quantity ?? 0;
+      if (txType === "stockIn") {
+        // ── StockIn: reverse main stock only
+        const mainSnap = await tx.get(mainStockRef);
+        const currentQty = mainSnap.data()?.quantity ?? 0;
+        const newQty = Math.max(0, currentQty - quantity);
 
-    let newQty: number;
-    if (txType === "stockIn") {
-      newQty = Math.max(0, currentQty - quantity); // reverse: remove what was added
-    } else if (txType === "transfer") {
-      newQty = currentQty + quantity; // reverse: add back to main
-    } else {
-      newQty = currentQty + quantity; // reverse: add back to pharmacy
-    }
+        tx.update(mainStockRef, { quantity: newQty, updatedAt: FieldValue.serverTimestamp() });
+        tx.delete(db.collection("mainStock").doc(productId).collection("mainLedger").doc(ledgerId));
+        tx.delete(txRef);
 
-    tx.update(stockRef, { quantity: newQty, updatedAt: FieldValue.serverTimestamp() });
-    tx.delete(ledgerRef);
-    tx.delete(txRef);
+      } else if (txType === "transfer") {
+        // ── Transfer: reverse BOTH main and pharmacy stock
+        const [mainSnap, pharmSnap] = await Promise.all([
+          tx.get(mainStockRef), tx.get(pharmStockRef),
+        ]);
+        const mainQty = mainSnap.data()?.quantity ?? 0;
+        const pharmQty = pharmSnap.data()?.quantity ?? 0;
 
-    // For transfer also reverse pharmacy stock
-    if (txType === "transfer") {
-      const pharmRef = db.collection("pharmacyStock").doc(productId);
-      const pharmSnap = await tx.get(pharmRef);
-      const pharmQty = pharmSnap.data()?.quantity ?? 0;
-      tx.update(pharmRef, { quantity: Math.max(0, pharmQty - quantity), updatedAt: FieldValue.serverTimestamp() });
-    }
-  });
+        // Reverse: add back to main, subtract from pharmacy
+        tx.update(mainStockRef, { quantity: mainQty + quantity, updatedAt: FieldValue.serverTimestamp() });
+        tx.update(pharmStockRef, { quantity: Math.max(0, pharmQty - quantity), updatedAt: FieldValue.serverTimestamp() });
 
-  return { success: true };
+        // Delete main ledger entry
+        tx.delete(db.collection("mainStock").doc(productId).collection("mainLedger").doc(ledgerId));
+
+        // Delete pharmacy ledger entry if we have its ID
+        if (pharmLedgerId) {
+          tx.delete(db.collection("pharmacyStock").doc(productId).collection("pharmacyLedger").doc(pharmLedgerId));
+        }
+        tx.delete(txRef);
+
+      } else if (txType === "dispense") {
+        // ── Dispense: add back to pharmacy stock
+        const pharmSnap = await tx.get(pharmStockRef);
+        const pharmQty = pharmSnap.data()?.quantity ?? 0;
+
+        tx.update(pharmStockRef, { quantity: pharmQty + quantity, updatedAt: FieldValue.serverTimestamp() });
+        tx.delete(db.collection("pharmacyStock").doc(productId).collection("pharmacyLedger").doc(ledgerId));
+        tx.delete(txRef);
+      }
+    });
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("deleteInventoryEntryAction:", err);
+    return { success: false, error: err.message ?? "Delete failed" };
+  }
 }
 
-// ─── Edit quantity — updates both tx doc, ledger doc, and stock ────────────
+// ─── EDIT quantity — updates ALL linked documents atomically ──────────────
 export async function editInventoryEntryAction({
-  dateKey,
-  txType,
-  txId,
-  newQuantity,
-  reason,
+  dateKey, txType, txId, newQuantity, reason,
 }: {
-  dateKey: string;
-  txType: TxType;
-  txId: string;
-  newQuantity: number;
-  reason: string;
+  dateKey: string; txType: TxType; txId: string; newQuantity: number; reason: string;
 }) {
   const user = await requireAuth();
   if (user.role !== "admin") return { success: false, error: "Admin only" };
   if (!reason || reason.trim().length < 5) return { success: false, error: "Reason too short" };
+  if (newQuantity < 0) return { success: false, error: "Quantity cannot be negative" };
 
   const db = getAdminDb();
+
   const txRef = db.collection("transactions").doc(dateKey).collection(txType).doc(txId);
   const txDoc = await txRef.get();
   if (!txDoc.exists) return { success: false, error: "Entry not found" };
 
   const txData = txDoc.data()!;
-  const { productId, quantity: oldQuantity, ledgerCollection, ledgerSubCollection, ledgerId } = txData;
+  const { productId, quantity: oldQty, ledgerCollection, ledgerSubCollection, ledgerId, pharmLedgerId } = txData;
+  const diff = newQuantity - oldQty; // positive = increased, negative = decreased
 
-  await db.runTransaction(async (tx) => {
-    const stockRef = db.collection(ledgerCollection as string).doc(productId);
-    const ledgerRef = db.collection(ledgerCollection as string)
-      .doc(productId).collection(ledgerSubCollection as string).doc(ledgerId);
+  if (diff === 0) return { success: true }; // no change needed
 
-    const stockSnap = await tx.get(stockRef);
-    const currentQty = stockSnap.data()?.quantity ?? 0;
+  const editMeta = {
+    quantity: newQuantity,
+    editedBy: user.id,
+    editedAt: Timestamp.now(),
+    editReason: reason,
+    originalQuantity: oldQty,
+  };
 
-    let newQty: number;
-    if (txType === "stockIn") {
-      newQty = currentQty - oldQuantity + newQuantity;
-    } else if (txType === "transfer") {
-      newQty = currentQty + oldQuantity - newQuantity;
-      const pharmRef = db.collection("pharmacyStock").doc(productId);
-      const pharmSnap = await tx.get(pharmRef);
-      const pharmQty = pharmSnap.data()?.quantity ?? 0;
-      tx.update(pharmRef, { quantity: Math.max(0, pharmQty - oldQuantity + newQuantity), updatedAt: FieldValue.serverTimestamp() });
-    } else {
-      newQty = currentQty + oldQuantity - newQuantity;
-    }
+  try {
+    await db.runTransaction(async (tx) => {
+      const mainStockRef = db.collection("mainStock").doc(productId);
+      const pharmStockRef = db.collection("pharmacyStock").doc(productId);
 
-    tx.update(stockRef, { quantity: Math.max(0, newQty), updatedAt: FieldValue.serverTimestamp() });
-    tx.update(ledgerRef, { quantity: newQuantity, editedBy: user.id, editedAt: Timestamp.now(), editReason: reason, originalQuantity: oldQuantity });
-    tx.update(txRef, { quantity: newQuantity, editedBy: user.id, editedAt: Timestamp.now(), editReason: reason, originalQuantity: oldQuantity });
-  });
+      if (txType === "stockIn") {
+        // ── StockIn edit: main stock goes up/down by diff
+        const mainSnap = await tx.get(mainStockRef);
+        const mainQty = mainSnap.data()?.quantity ?? 0;
 
-  return { success: true };
+        tx.update(mainStockRef, { quantity: mainQty + diff, updatedAt: FieldValue.serverTimestamp() });
+        tx.update(
+          db.collection("mainStock").doc(productId).collection("mainLedger").doc(ledgerId),
+          editMeta
+        );
+        tx.update(txRef, editMeta);
+
+      } else if (txType === "transfer") {
+        // ── Transfer edit: main loses more/less, pharmacy gains more/less
+        const [mainSnap, pharmSnap] = await Promise.all([
+          tx.get(mainStockRef), tx.get(pharmStockRef),
+        ]);
+        const mainQty = mainSnap.data()?.quantity ?? 0;
+        const pharmQty = pharmSnap.data()?.quantity ?? 0;
+
+        // If qty increased (10→12): main loses 2 more, pharmacy gains 2 more
+        // If qty decreased (10→8): main gets 2 back, pharmacy loses 2
+        const newMainQty = Math.max(0, mainQty - diff);
+        const newPharmQty = Math.max(0, pharmQty + diff);
+
+        tx.update(mainStockRef, { quantity: newMainQty, updatedAt: FieldValue.serverTimestamp() });
+        tx.update(pharmStockRef, { quantity: newPharmQty, updatedAt: FieldValue.serverTimestamp() });
+
+        // Update main ledger
+        tx.update(
+          db.collection("mainStock").doc(productId).collection("mainLedger").doc(ledgerId),
+          editMeta
+        );
+
+        // Update pharmacy ledger if we have its ID
+        if (pharmLedgerId) {
+          tx.update(
+            db.collection("pharmacyStock").doc(productId).collection("pharmacyLedger").doc(pharmLedgerId),
+            editMeta
+          );
+        }
+        tx.update(txRef, editMeta);
+
+      } else if (txType === "dispense") {
+        // ── Dispense edit: pharmacy goes up/down by diff (opposite to dispense direction)
+        const pharmSnap = await tx.get(pharmStockRef);
+        const pharmQty = pharmSnap.data()?.quantity ?? 0;
+
+        // If dispensed qty increased (10→12): pharmacy loses 2 more → -diff
+        // If dispensed qty decreased (10→8): pharmacy gets 2 back → -diff
+        tx.update(pharmStockRef, { quantity: Math.max(0, pharmQty - diff), updatedAt: FieldValue.serverTimestamp() });
+        tx.update(
+          db.collection("pharmacyStock").doc(productId).collection("pharmacyLedger").doc(ledgerId),
+          editMeta
+        );
+        tx.update(txRef, editMeta);
+      }
+    });
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("editInventoryEntryAction:", err);
+    return { success: false, error: err.message ?? "Edit failed" };
+  }
 }
 
-// ─── Change date ──────────────────────────────────────────────────────────
+// ─── CHANGE DATE — moves transaction + updates ALL ledger timestamps ──────
 export async function changeDateInventoryEntryAction({
-  dateKey,
-  txType,
-  txId,
-  newDate,
+  dateKey, txType, txId, newDate,
 }: {
-  dateKey: string;
-  txType: TxType;
-  txId: string;
-  newDate: string;
+  dateKey: string; txType: TxType; txId: string; newDate: string;
 }) {
   const user = await requireAuth();
   if (user.role !== "admin") return { success: false, error: "Admin only" };
-  const ok = await changeTransactionDate(dateKey, txType, txId, newDate, user.id);
-  if (!ok) return { success: false, error: "Entry not found" };
-  return { success: true };
+  if (dateKey === newDate) return { success: true }; // no change
+
+  const db = getAdminDb();
+
+  // Read the original transaction
+  const oldTxRef = db.collection("transactions").doc(dateKey).collection(txType).doc(txId);
+  const txDoc = await oldTxRef.get();
+  if (!txDoc.exists) return { success: false, error: "Entry not found" };
+
+  const txData = txDoc.data()!;
+  const { productId, ledgerId, pharmLedgerId } = txData;
+  const newTs = toTimestamp(newDate);
+
+  try {
+    // Move transaction doc to new date (Firestore can't "move" — delete + create)
+    const newTxRef = db.collection("transactions").doc(newDate).collection(txType).doc(txId);
+
+    await db.runTransaction(async (tx) => {
+      // Write to new date location with updated timestamp
+      tx.set(newTxRef, {
+        ...txData,
+        entryDate: newDate,
+        timestamp: newTs,
+        dateChangedBy: user.id,
+        dateChangedAt: Timestamp.now(),
+        originalDate: dateKey,
+      });
+
+      // Delete from old date
+      tx.delete(oldTxRef);
+
+      // Update main ledger timestamp
+      if (ledgerId) {
+        const mainLedgerRef = db.collection("mainStock").doc(productId)
+          .collection("mainLedger").doc(ledgerId);
+        tx.update(mainLedgerRef, {
+          timestamp: newTs,
+          dateChangedBy: user.id,
+          dateChangedAt: Timestamp.now(),
+          originalDate: dateKey,
+        });
+      }
+
+      // Update pharmacy ledger timestamp (for transfers and dispenses)
+      if (pharmLedgerId) {
+        const pharmLedgerRef = db.collection("pharmacyStock").doc(productId)
+          .collection("pharmacyLedger").doc(pharmLedgerId);
+        tx.update(pharmLedgerRef, {
+          timestamp: newTs,
+          dateChangedBy: user.id,
+          dateChangedAt: Timestamp.now(),
+          originalDate: dateKey,
+        });
+      } else if (txType === "dispense" && txData.ledgerSubCollection === "pharmacyLedger") {
+        // Dispense uses ledgerId for pharmacy ledger (not pharmLedgerId)
+        const pharmLedgerRef = db.collection("pharmacyStock").doc(productId)
+          .collection("pharmacyLedger").doc(ledgerId);
+        tx.update(pharmLedgerRef, {
+          timestamp: newTs,
+          dateChangedBy: user.id,
+          dateChangedAt: Timestamp.now(),
+          originalDate: dateKey,
+        });
+      }
+
+      // Update new date summary doc
+      tx.set(db.collection("transactions").doc(newDate), {
+        [`has${txType.charAt(0).toUpperCase() + txType.slice(1)}`]: true,
+        lastUpdated: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+
+    // Update _meta/activeDates with new date (non-blocking)
+    await updateActiveDates(newDate, txType).catch(console.error);
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("changeDateInventoryEntryAction:", err);
+    return { success: false, error: err.message ?? "Date change failed" };
+  }
 }
 
-// ─── Bulk change date ─────────────────────────────────────────────────────
+// ─── BULK CHANGE DATE ─────────────────────────────────────────────────────
 export async function bulkChangeDateAction({
-  entries,
-  newDate,
+  entries, newDate,
 }: {
   entries: { dateKey: string; txType: TxType; txId: string }[];
   newDate: string;
@@ -199,13 +338,17 @@ export async function bulkChangeDateAction({
 
   let succeeded = 0;
   const failed: string[] = [];
+
   for (const entry of entries) {
-    try {
-      await changeTransactionDate(entry.dateKey, entry.txType, entry.txId, newDate, user.id);
-      succeeded++;
-    } catch {
-      failed.push(entry.txId);
-    }
+    const result = await changeDateInventoryEntryAction({
+      dateKey: entry.dateKey,
+      txType: entry.txType,
+      txId: entry.txId,
+      newDate,
+    });
+    if (result.success) succeeded++;
+    else failed.push(entry.txId);
   }
+
   return { success: true, data: { succeeded, failed } };
 }

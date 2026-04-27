@@ -1,4 +1,7 @@
 // services/stockService.ts
+// ALL mutations are atomic Firestore transactions.
+// Transfer stores BOTH ledger IDs (ledgerId + pharmLedgerId) in the transaction doc
+// so edit/delete/change-date can find and update all linked documents.
 import "server-only";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -6,7 +9,8 @@ import { InsufficientStockError, NotFoundError } from "@/utils/errorHandler";
 import type { StockAdjustmentInput } from "@/schemas/stock";
 import { saveTransaction, getDateKey } from "./transactionService";
 
-function toTimestamp(dateStr?: string | null): any {
+// ─── Helper: date string → Firestore Timestamp ────────────────────────────
+export function toTimestamp(dateStr?: string | null): any {
   if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     const [y, m, d] = dateStr.split("-").map(Number);
     return Timestamp.fromDate(new Date(Date.UTC(y, m - 1, d, 6, 0, 0)));
@@ -14,6 +18,7 @@ function toTimestamp(dateStr?: string | null): any {
   return FieldValue.serverTimestamp();
 }
 
+// ─── Stock IN ─────────────────────────────────────────────────────────────
 export async function addMainStockIn(input: {
   productId: string; quantity: number; batch: string;
   expiry?: string | null; price: number; supplier: string;
@@ -47,7 +52,10 @@ export async function addMainStockIn(input: {
     quantity: input.quantity, price: input.price,
     batch: input.batch, supplier: input.supplier,
     userId, entryDate: dateKey, timestamp: entryTs as Timestamp,
-    ledgerCollection: "mainStock", ledgerSubCollection: "mainLedger", ledgerId: ledgerRef.id,
+    ledgerCollection: "mainStock",
+    ledgerSubCollection: "mainLedger",
+    ledgerId: ledgerRef.id,
+    // No pharmLedgerId for stockIn
   }).catch(console.error);
 
   return { beforeQty, afterQty };
@@ -66,6 +74,8 @@ export async function bulkAddMainStockIn(entries: Array<{
   return { succeeded, failed, total: entries.length };
 }
 
+// ─── Transfer: Main → Pharmacy ────────────────────────────────────────────
+// Stores BOTH ledgerId (main) and pharmLedgerId (pharmacy) in the transaction doc
 export async function transferToPharmacy(input: {
   productId: string; quantity: number; batch: string;
   expiry?: string | null; notes?: string; entryDate?: string;
@@ -89,30 +99,41 @@ export async function transferToPharmacy(input: {
     const beforePharmQty = pharmSnap.data()!.quantity ?? 0;
     afterMainQty = beforeMainQty - input.quantity;
     if (afterMainQty < 0) throw new InsufficientStockError();
+
     tx.update(mainRef, { quantity: afterMainQty, updatedAt: FieldValue.serverTimestamp() });
     tx.update(pharmRef, { quantity: beforePharmQty + input.quantity, updatedAt: FieldValue.serverTimestamp() });
+
     tx.set(mainLedgerRef, {
       type: "OUT", reference: "TRANSFER", quantity: input.quantity,
       batch: input.batch, expiry: expiryTs, price: 0, supplier: "",
       notes: input.notes ?? "", timestamp: entryTs, userId,
+      // Store pharmacy ledger ID for cross-reference
+      pharmLedgerId: pharmLedgerRef.id,
     });
     tx.set(pharmLedgerRef, {
       type: "IN", reference: "TRANSFER", quantity: input.quantity,
       batch: input.batch, expiry: expiryTs, timestamp: entryTs, userId,
+      // Store main ledger ID for cross-reference
+      mainLedgerId: mainLedgerRef.id,
     });
   });
 
+  // Store BOTH ledger IDs in transaction doc
   await saveTransaction("transfer", {
     productId: input.productId, brandName: input.brandName ?? "",
     genericName: input.genericName ?? "", unit: input.unit ?? "",
     quantity: input.quantity, batch: input.batch, notes: input.notes,
     userId, entryDate: dateKey, timestamp: entryTs as Timestamp,
-    ledgerCollection: "mainStock", ledgerSubCollection: "mainLedger", ledgerId: mainLedgerRef.id,
+    ledgerCollection: "mainStock",
+    ledgerSubCollection: "mainLedger",
+    ledgerId: mainLedgerRef.id,
+    pharmLedgerId: pharmLedgerRef.id,  // ← KEY: stored for CRUD operations
   }).catch(console.error);
 
   return { success: true };
 }
 
+// ─── Dispense from Pharmacy ───────────────────────────────────────────────
 export async function dispenseFromPharmacy(input: {
   productId: string; quantity: number; batch?: string; price?: number;
   patientName?: string; prescriptionNo?: string; entryDate?: string;
@@ -135,7 +156,8 @@ export async function dispenseFromPharmacy(input: {
     tx.set(ledgerRef, {
       type: "OUT", reference: "DISPENSE", quantity: input.quantity,
       batch: input.batch ?? "", expiry: null,
-      patientName: input.patientName ?? "", prescriptionNo: input.prescriptionNo ?? "",
+      patientName: input.patientName ?? "",
+      prescriptionNo: input.prescriptionNo ?? "",
       timestamp: entryTs, userId,
     });
   });
@@ -146,7 +168,10 @@ export async function dispenseFromPharmacy(input: {
     quantity: input.quantity, price: input.price ?? 0,
     patientName: input.patientName, prescriptionNo: input.prescriptionNo,
     userId, entryDate: dateKey, timestamp: entryTs as Timestamp,
-    ledgerCollection: "pharmacyStock", ledgerSubCollection: "pharmacyLedger", ledgerId: ledgerRef.id,
+    ledgerCollection: "pharmacyStock",
+    ledgerSubCollection: "pharmacyLedger",
+    ledgerId: ledgerRef.id,
+    // No pharmLedgerId for dispense
   }).catch(console.error);
 
   return { success: true, beforeQty, afterQty };
@@ -164,6 +189,7 @@ export async function bulkDispense(items: Array<{
   return { succeeded, failed, total: items.length };
 }
 
+// ─── Admin Stock Adjustment ───────────────────────────────────────────────
 export async function adjustStock(input: StockAdjustmentInput, userId: string) {
   const db = getAdminDb();
   const collName = input.stockType === "main" ? "mainStock" : "pharmacyStock";
