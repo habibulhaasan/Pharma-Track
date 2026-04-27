@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Package, ArrowLeftRight, Pill,
   BarChart3, Users, LogOut, ChevronRight, ShieldCheck,
-  Boxes, ClipboardList, Settings, History, ScrollText,
+  Boxes, ClipboardList, Settings, History, ScrollText,DatabaseBackup,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/app/actions/auth";
@@ -20,6 +20,7 @@ const navItems = [
   { href: "/stock/pharmacy",         label: "Dispense",        icon: Pill },
   { href: "/ledger",                 label: "Ledger",          icon: ClipboardList },
   { href: "/inventory",              label: "Inventory Log",   icon: ScrollText },
+  { href: "/admin/backup",                label: "Backup",          icon: DatabaseBackup,    adminOnly: true },
   { href: "/reports",                label: "Reports",         icon: BarChart3,    adminOnly: true },
   { href: "/admin",                  label: "Admin Panel",     icon: ShieldCheck,  adminOnly: true },
   { href: "/admin/users",            label: "Users",           icon: Users,        adminOnly: true },
