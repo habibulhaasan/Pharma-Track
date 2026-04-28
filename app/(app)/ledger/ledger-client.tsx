@@ -96,6 +96,7 @@ export function LedgerClient({ products }: { products: Product[] }) {
   const [openingBalance, setOpeningBalance] = useState(0);
   const [loading,     setLoading]     = useState(false);
   const [pdfLoading,  setPdfLoading]  = useState(false);
+  const [pdfMenu,     setPdfMenu]     = useState(false);
   const [bulkModal,   setBulkModal]   = useState(false);
   const [search,      setSearch]      = useState("");
   const [mobileOpen,  setMobileOpen]  = useState(false);
@@ -239,9 +240,10 @@ export function LedgerClient({ products }: { products: Product[] }) {
   const currentBalance = statement.length > 0 ? statement[statement.length - 1].balance : 0;
 
   // ── PDF download ─────────────────────────────────────────────────────────
-  const handleDownloadPDF = async () => {
+  const handleDownloadPDF = async (layout: "paginated" | "compact") => {
     if (!selected || statement.length === 0) return;
     setPdfLoading(true);
+    setPdfMenu(false);
     try {
       await downloadLedgerPDF({
         productName: selected.brandName,
@@ -252,6 +254,7 @@ export function LedgerClient({ products }: { products: Product[] }) {
         isFullLedger: isFullMode,
         month: isFullMode ? undefined : (viewMode as number),
         year,
+        layout,
       });
     } finally {
       setPdfLoading(false);
@@ -351,15 +354,47 @@ export function LedgerClient({ products }: { products: Product[] }) {
                     </button>
                   </div>
 
-                  {/* Single product PDF */}
+                  {/* Single product PDF — split button */}
                   {statement.length > 1 && (
-                    <button onClick={handleDownloadPDF} disabled={pdfLoading}
-                      className="flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/50 transition-colors disabled:opacity-50">
-                      {pdfLoading
-                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        : <FileText className="h-3.5 w-3.5 text-primary" />}
-                      Download PDF
-                    </button>
+                    <div className="relative">
+                      <div className="flex rounded-md border border-input overflow-hidden text-xs">
+                        <button
+                          onClick={() => handleDownloadPDF("paginated")}
+                          disabled={pdfLoading}
+                          className="flex items-center gap-1.5 bg-background px-3 py-1.5 font-medium hover:bg-muted/50 transition-colors disabled:opacity-50"
+                        >
+                          {pdfLoading
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <FileText className="h-3.5 w-3.5 text-primary" />}
+                          PDF
+                        </button>
+                        <button
+                          onClick={() => setPdfMenu((v) => !v)}
+                          disabled={pdfLoading}
+                          className="border-l bg-background px-2 py-1.5 hover:bg-muted/50 transition-colors disabled:opacity-50"
+                        >
+                          <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${pdfMenu ? "rotate-180" : ""}`} />
+                        </button>
+                      </div>
+                      {pdfMenu && (
+                        <div className="absolute right-0 top-full mt-1 z-20 w-52 rounded-md border bg-card shadow-lg overflow-hidden">
+                          <button
+                            onClick={() => handleDownloadPDF("paginated")}
+                            className="w-full text-left px-3 py-2.5 text-xs hover:bg-muted/50 transition-colors border-b"
+                          >
+                            <p className="font-medium">Month by Month</p>
+                            <p className="text-muted-foreground text-[10px] mt-0.5">One page per month, with header &amp; summary</p>
+                          </button>
+                          <button
+                            onClick={() => handleDownloadPDF("compact")}
+                            className="w-full text-left px-3 py-2.5 text-xs hover:bg-muted/50 transition-colors"
+                          >
+                            <p className="font-medium">Compact (All-in-one)</p>
+                            <p className="text-muted-foreground text-[10px] mt-0.5">All months continuous, saves pages</p>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {/* CSV export */}
@@ -521,7 +556,12 @@ export function LedgerClient({ products }: { products: Product[] }) {
         </div>
       </div>
 
-      {/* Bulk export modal — rendered at root level to overlay everything */}
+      {/* Close PDF menu on outside click */}
+      {pdfMenu && (
+        <div className="fixed inset-0 z-10" onClick={() => setPdfMenu(false)} />
+      )}
+
+      {/* Bulk export modal */}
       {bulkModal && (
         <BulkLedgerExportModal
           products={products}
