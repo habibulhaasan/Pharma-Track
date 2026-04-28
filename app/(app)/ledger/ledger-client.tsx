@@ -551,14 +551,15 @@ export function LedgerClient({ products }: { products: Product[] }) {
           <LedgerExportButton exportAll />
         </div>
 
-        {/* Bulk export modal */}
-        {bulkModal && (
-          <BulkLedgerExportModal
-            products={products}
-            ledgerType={ledgerType}
-            onClose={() => setBulkModal(false)}
-          />
-        )}
       </>
     )}
   </div>
+
+  {/* Bulk export modal — outside the right panel so it overlays everything */}
+  {bulkModal && (
+    <BulkLedgerExportModal
+      products={products}
+      ledgerType={ledgerType}
+      onClose={() => setBulkModal(false)}
+    />
+  )}
