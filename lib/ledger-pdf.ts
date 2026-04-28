@@ -402,8 +402,8 @@ function buildCompact(
           cellPadding: { top: 3, bottom: 3, left: 4, right: 4 },
           halign: "right" as const,
         },
-      },
-    ]);
+      } as any,
+    ] as any);
 
     page.rows.forEach((r) => {
       allRows.push([
