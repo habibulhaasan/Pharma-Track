@@ -8,11 +8,12 @@ import {
 } from "firebase/firestore";
 import {
   ClipboardList, Search, TrendingUp, TrendingDown,
-  ChevronDown, Loader2, FileText, CalendarRange,
+  ChevronDown, Loader2, FileText, CalendarRange, FileDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { LedgerExportButton } from "@/components/ledger-export-button";
 import { downloadLedgerPDF } from "@/lib/ledger-pdf";
+import { BulkLedgerExportModal } from "@/components/bulk-ledger-export-modal";
 
 interface Product {
   id: string;
@@ -97,6 +98,7 @@ export function LedgerClient({ products }: { products: Product[] }) {
   const [openingBalance, setOpeningBalance] = useState(0);
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [bulkModal,  setBulkModal]  = useState(false);
   const [search, setSearch] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -537,13 +539,26 @@ export function LedgerClient({ products }: { products: Product[] }) {
               )}
             </div>
 
-            {/* Footer export */}
-            <div className="border-t p-3 flex justify-end">
-              <LedgerExportButton exportAll />
-            </div>
-          </>
+        {/* Footer export */}
+        <div className="border-t p-3 flex items-center justify-between gap-2">
+          <button
+            onClick={() => setBulkModal(true)}
+            className="flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/50 transition-colors"
+          >
+            <FileDown className="h-3.5 w-3.5 text-primary" />
+            Bulk Ledger PDF
+          </button>
+          <LedgerExportButton exportAll />
+        </div>
+
+        {/* Bulk export modal */}
+        {bulkModal && (
+          <BulkLedgerExportModal
+            products={products}
+            ledgerType={ledgerType}
+            onClose={() => setBulkModal(false)}
+          />
         )}
-      </div>
-    </div>
-  );
-}
+      </>
+    )}
+  </div>
