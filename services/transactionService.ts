@@ -28,7 +28,8 @@ export interface TxEntry {
   // For linking back to ledger doc for edit/delete
   ledgerCollection: "mainStock" | "pharmacyStock";
   ledgerSubCollection: "mainLedger" | "pharmacyLedger";
-  ledgerId: string;        // the doc ID in the ledger subcollection
+  ledgerId: string;
+  pharmLedgerId?: string;
   deleted?: boolean;
 }
 
