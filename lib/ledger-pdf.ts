@@ -270,13 +270,13 @@ function drawSummaryCards(
   return y + cardH + 3;
 }
 
-// Shared autoTable column config — fits A4 width
+// A4 usable width = 210 - 12*2 = 186mm. Columns sum to exactly 186.
 function tableColStyles() {
   return {
-    0: { cellWidth: 36, },
-    1: { cellWidth: 26, halign: "right" as const, textColor: [22, 163, 74]  as [number,number,number] },
-    2: { cellWidth: 26, halign: "right" as const, textColor: [220, 38, 38]  as [number,number,number] },
-    3: { cellWidth: 30, halign: "right" as const, fontStyle: "bold" as const },
+    0: { cellWidth: 72 },                                                                    // Date — gets remaining space
+    1: { cellWidth: 38, halign: "right" as const, textColor: [22, 163, 74]  as [number,number,number] },
+    2: { cellWidth: 38, halign: "right" as const, textColor: [220, 38, 38]  as [number,number,number] },
+    3: { cellWidth: 38, halign: "right" as const, fontStyle: "bold" as const },
   };
 }
 
@@ -389,21 +389,20 @@ function buildCompact(
   const allRows: TableRow[] = [];
 
   pages.forEach((page) => {
-    // Month divider row (spans all cols)
+    // Month divider — merged across all 4 cols, right-aligned month label
     allRows.push([
       {
-        content: `── ${page.label} ──`,
+        content: page.label,
+        colSpan: 4,
         styles: {
-          fontStyle: "bold",
-          fillColor: [225, 235, 255],
-          textColor: [30, 64, 175],
-          fontSize: 8,
-          cellPadding: 2,
+          fontStyle: "bold" as const,
+          fillColor: [225, 235, 255] as [number,number,number],
+          textColor: [30, 64, 175]  as [number,number,number],
+          fontSize: 8.5,
+          cellPadding: { top: 3, bottom: 3, left: 4, right: 4 },
+          halign: "right" as const,
         },
       },
-      { content: "", styles: { fillColor: [225, 235, 255] } },
-      { content: "", styles: { fillColor: [225, 235, 255] } },
-      { content: "", styles: { fillColor: [225, 235, 255] } },
     ]);
 
     page.rows.forEach((r) => {
