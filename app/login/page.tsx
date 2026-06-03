@@ -1,6 +1,7 @@
 "use client";
 // app/login/page.tsx
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { toast } from "sonner";
@@ -19,6 +20,24 @@ export default function LoginPage() {
   const [isPending, startTransition] = useTransition();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [checking, setChecking] = useState(true);
+  const router = useRouter();
+
+  // Check if user is already authenticated on mount
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.authenticated) {
+          router.replace(data.redirectTo ?? "/dashboard");
+        } else {
+          setChecking(false);
+        }
+      })
+      .catch(() => {
+        setChecking(false);
+      });
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -30,21 +49,13 @@ export default function LoginPage() {
 
     startTransition(async () => {
       try {
-        // Step 1: Firebase client-side auth (browser only)
         const credential = await signInWithEmailAndPassword(auth, email, password);
         const idToken = await credential.user.getIdToken();
 
-        // Step 2: Server action verifies token, checks status, sets httpOnly cookie
         const result = await createSessionAction(idToken);
 
         if (result.success) {
           toast.success("Welcome back!");
-          // Use window.location for a full hard navigation.
-          // router.push() races against the cookie being written — the middleware
-          // reads the request before the Set-Cookie response header is committed,
-          // sees no session, and redirects straight back to /login.
-          // A hard navigation sends a brand-new request that always includes the
-          // freshly-set cookie.
           window.location.href = result.redirectTo ?? "/dashboard";
         } else {
           setError((result as any).error ?? "Login failed");
@@ -65,6 +76,20 @@ export default function LoginPage() {
         }
       }
     });
+  }
+
+  // Show a loading spinner while checking auth status
+  if (checking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-accent/20 to-background">
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary shadow-lg">
+            <Pill className="h-6 w-6 text-primary-foreground" />
+          </div>
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -139,7 +164,7 @@ export default function LoginPage() {
             </CardContent>
 
             <CardFooter className="flex-col gap-3 pt-2">
-              <Button type="submit" className="w-full" loading={isPending}>
+              <Button type="submit" className="w-full" loading={isPending} disabled={isPending}>
                 {isPending ? "Signing in…" : "Sign In"}
               </Button>
               <p className="text-center text-xs text-muted-foreground">
