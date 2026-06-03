@@ -9,7 +9,7 @@ export { SESSION_COOKIE_NAME, SESSION_DURATION_MS };
 export async function setSessionCookie(idToken: string) {
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE_NAME, idToken, {
-    maxAge: 55 * 60,
+    maxAge: 60 * 60 * 24 * 14, // 14 days
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -33,7 +33,7 @@ export async function getCurrentUser() {
 
   console.log("[getCurrentUser] verifying token...");
   const verified = await verifyIdTokenCookie(idToken);
-  
+
   if (!verified) {
     console.log("[getCurrentUser] verifyIdTokenCookie returned null");
     return null;
