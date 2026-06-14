@@ -16,43 +16,15 @@ export async function middleware(request: NextRequest) {
 
   if (AUTH_PAGES.some((p) => pathname.startsWith(p))) {
     if (sessionCookie) {
-      // Verify the cookie is actually valid before redirecting
-      try {
-        const { verifySessionCookie } = await import("@/lib/firebaseAdmin");
-        const verified = await verifySessionCookie(sessionCookie);
-        if (verified) {
-          return NextResponse.redirect(new URL("/dashboard", request.url));
-        }
-      } catch {
-        // Cookie is invalid — clear it and let them stay on login
-        const response = NextResponse.next();
-        response.cookies.delete(SESSION_COOKIE_NAME);
-        return response;
-      }
+      return NextResponse.redirect(new URL("/dashboard", request.url));
     }
     return NextResponse.next();
   }
 
-  // Protected routes
   if (!sessionCookie) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("from", pathname);
     return NextResponse.redirect(loginUrl);
-  }
-
-  // Validate cookie on protected routes too
-  try {
-    const { verifySessionCookie } = await import("@/lib/firebaseAdmin");
-    const verified = await verifySessionCookie(sessionCookie);
-    if (!verified) {
-      const response = NextResponse.redirect(new URL("/login", request.url));
-      response.cookies.delete(SESSION_COOKIE_NAME);
-      return response;
-    }
-  } catch {
-    const response = NextResponse.redirect(new URL("/login", request.url));
-    response.cookies.delete(SESSION_COOKIE_NAME);
-    return response;
   }
 
   return NextResponse.next();
