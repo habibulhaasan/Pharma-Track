@@ -1,7 +1,6 @@
 "use client";
 // app/login/page.tsx
-import { useState, useTransition, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { toast } from "sonner";
@@ -20,24 +19,6 @@ export default function LoginPage() {
   const [isPending, startTransition] = useTransition();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
-  const [checking, setChecking] = useState(true);
-  const router = useRouter();
-
-  // Check if user is already authenticated on mount
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.authenticated) {
-          router.replace(data.redirectTo ?? "/dashboard");
-        } else {
-          setChecking(false);
-        }
-      })
-      .catch(() => {
-        setChecking(false);
-      });
-  }, [router]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -51,7 +32,6 @@ export default function LoginPage() {
       try {
         const credential = await signInWithEmailAndPassword(auth, email, password);
         const idToken = await credential.user.getIdToken();
-
         const result = await createSessionAction(idToken);
 
         if (result.success) {
@@ -78,24 +58,9 @@ export default function LoginPage() {
     });
   }
 
-  // Show a loading spinner while checking auth status
-  if (checking) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-accent/20 to-background">
-        <div className="flex flex-col items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary shadow-lg">
-            <Pill className="h-6 w-6 text-primary-foreground" />
-          </div>
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-background via-accent/20 to-background px-4 py-12">
       <div className="w-full max-w-sm">
-        {/* Brand */}
         <div className="mb-8 flex flex-col items-center gap-2">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary shadow-lg">
             <Pill className="h-6 w-6 text-primary-foreground" />
@@ -123,14 +88,9 @@ export default function LoginPage() {
                 <div className="relative">
                   <Mail className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    placeholder="you@example.com"
-                    autoComplete="email"
-                    required
-                    className="pl-9"
-                    disabled={isPending}
+                    id="email" name="email" type="email"
+                    placeholder="you@example.com" autoComplete="email"
+                    required className="pl-9" disabled={isPending}
                   />
                 </div>
               </div>
@@ -140,14 +100,10 @@ export default function LoginPage() {
                 <div className="relative">
                   <Lock className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    id="password"
-                    name="password"
+                    id="password" name="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    autoComplete="current-password"
-                    required
-                    className="pl-9 pr-9"
-                    disabled={isPending}
+                    placeholder="••••••••" autoComplete="current-password"
+                    required className="pl-9 pr-9" disabled={isPending}
                   />
                   <button
                     type="button"
@@ -155,9 +111,7 @@ export default function LoginPage() {
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                     tabIndex={-1}
                   >
-                    {showPassword
-                      ? <EyeOff className="h-4 w-4" />
-                      : <Eye className="h-4 w-4" />}
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
