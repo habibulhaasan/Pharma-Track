@@ -25,11 +25,28 @@ export async function middleware(request: NextRequest) {
   }
 
   // Has a cookie — verify it by calling /api/auth/me (runs on Node.js, can use firebase-admin)
-  const verifyUrl = new URL("/api/auth/me", request.url);
-  const verifyRes = await fetch(verifyUrl, {
-    headers: { cookie: `${SESSION_COOKIE_NAME}=${sessionCookie}` },
-  });
-  const { authenticated, redirectTo } = await verifyRes.json();
+  // Any failure here (network error, non-JSON response such as a Vercel protection
+  // page, a 500 from missing env vars) is treated as "not authenticated" instead of
+  // crashing the middleware with MIDDLEWARE_INVOCATION_FAILED.
+  let authenticated = false;
+  let redirectTo: string | undefined;
+  try {
+    const verifyUrl = new URL("/api/auth/me", request.url);
+    const verifyRes = await fetch(verifyUrl, {
+      headers: { cookie: `${SESSION_COOKIE_NAME}=${sessionCookie}` },
+      cache: "no-store",
+    });
+    const contentType = verifyRes.headers.get("content-type") ?? "";
+    if (verifyRes.ok && contentType.includes("application/json")) {
+      const body = await verifyRes.json();
+      authenticated = !!body?.authenticated;
+      redirectTo = body?.redirectTo;
+    } else {
+      console.error("middleware: /api/auth/me returned", verifyRes.status, contentType);
+    }
+  } catch (err) {
+    console.error("middleware: auth verification failed", err);
+  }
 
   if (AUTH_PAGES.some((p) => pathname.startsWith(p))) {
     if (authenticated) {
