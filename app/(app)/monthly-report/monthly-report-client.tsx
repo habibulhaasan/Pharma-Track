@@ -156,7 +156,7 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
       await downloadYearReportPDF({ kind, year, products: pdfProducts });
     } catch (err) {
       console.error(err);
-      alert("PDF export failed. Please try again.");
+      alert(`PDF export failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy("");
     }
@@ -184,7 +184,7 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
       URL.revokeObjectURL(a.href);
     } catch (err) {
       console.error(err);
-      alert("Excel export failed. Please try again.");
+      alert(`Excel export failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy("");
     }
