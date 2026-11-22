@@ -143,3 +143,53 @@ export async function getMonthlyProductReport(
     };
   });
 }
+
+export interface YearProductRow {
+  productId: string;
+  months: ProductMonthRow[]; // 12 entries
+}
+
+/** All products → 12 months each for a year. One collection-group read. */
+export async function getAllProductsYearReport(
+  kind: LedgerKind,
+  year: number
+): Promise<YearProductRow[]> {
+  const db = getAdminDb();
+  const { ledger } = names(kind);
+  const yearStart = Date.UTC(year, 0, 1);
+  const yearEnd = Date.UTC(year + 1, 0, 1);
+
+  const snap = await db
+    .collectionGroup(ledger)
+    .select("type", "quantity", "adjustmentDelta", "timestamp")
+    .get();
+
+  const agg: Record<string, { opening: number; ins: number[]; outs: number[] }> = {};
+
+  snap.docs.forEach((doc) => {
+    const productId = doc.ref.parent.parent?.id;
+    if (!productId) return;
+    const data = doc.data();
+    const t = tsMillis(data.timestamp);
+    if (t >= yearEnd) return;
+    const dl = delta(data);
+    const a = (agg[productId] ??= { opening: 0, ins: Array(12).fill(0), outs: Array(12).fill(0) });
+    if (t < yearStart) a.opening += dl;
+    else {
+      const m = new Date(t).getUTCMonth();
+      if (dl > 0) a.ins[m] += dl;
+      else a.outs[m] += Math.abs(dl);
+    }
+  });
+
+  return Object.entries(agg).map(([productId, a]) => {
+    let running = a.opening;
+    const months: ProductMonthRow[] = [];
+    for (let m = 0; m < 12; m++) {
+      const open = running;
+      running = open + a.ins[m] - a.outs[m];
+      months.push({ month: m + 1, opening: open, in: a.ins[m], out: a.outs[m], closing: running });
+    }
+    return { productId, months };
+  });
+}
