@@ -16,6 +16,7 @@ import {
 } from "@/services/monthlyReportService";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const MONTHS = [
   "January","February","March","April","May","June",
