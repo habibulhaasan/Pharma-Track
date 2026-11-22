@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth";
 import {
   getProductMonthlySeries,
   getMonthlyProductReport,
+  getAllProductsYearReport,
   type LedgerKind,
 } from "@/services/monthlyReportService";
 
@@ -32,5 +33,15 @@ export async function getMonthlyProductReportAction(
   } catch (err) {
     console.error("getMonthlyProductReportAction:", err);
     return { success: false as const, error: "Failed to load monthly report" };
+  }
+}
+
+export async function getAllProductsYearReportAction(kind: LedgerKind, year: number) {
+  await requireAuth();
+  try {
+    return { success: true as const, data: await getAllProductsYearReport(kind, year) };
+  } catch (err) {
+    console.error("getAllProductsYearReportAction:", err);
+    return { success: false as const, error: "Failed to load yearly report" };
   }
 }
