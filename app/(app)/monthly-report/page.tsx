@@ -5,6 +5,8 @@ import { sortProducts } from "@/utils/stockUtils";
 import { MonthlyReportClient } from "./monthly-report-client";
 
 export const runtime = "nodejs";
+// Server actions used by this page (year report reads every ledger entry) inherit this limit
+export const maxDuration = 60;
 
 export default async function MonthlyReportPage() {
   await getCurrentUser();
