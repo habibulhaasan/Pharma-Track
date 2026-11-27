@@ -17,12 +17,12 @@ function getAdminApp(): App {
   let privateKey: string | undefined;
 
   if (process.env.FIREBASE_ADMIN_PRIVATE_KEY_BASE64) {
-    privateKey = Buffer.from(
-      process.env.FIREBASE_ADMIN_PRIVATE_KEY_BASE64,
-      "base64"
-    ).toString("utf-8");
+    privateKey = Buffer.from(process.env.FIREBASE_ADMIN_PRIVATE_KEY_BASE64, "base64").toString("utf-8");
+    console.log("[debug] Loaded private key from BASE64, length", privateKey.length);
   } else if (process.env.FIREBASE_ADMIN_PRIVATE_KEY) {
-    privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY.replace(/\\n/g, "\n");
+    // Strip escaped newlines and surrounding quotes if present
+    privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY.replace(/\\n/g, "\n").replace(/^"|"$/g, "");
+    console.log("[debug] Loaded private key from RAW env, length", privateKey.length);
   }
 
   if (!privateKey) {
