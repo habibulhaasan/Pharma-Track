@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PharmaTrack | Clinical Pharmacy Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; margin: 0; }
+        
+        /* App Container & Scrollbars for the Mockup */
+        .app-container { background-color: #f8fafc; color: #0f172a; position: relative; overflow: hidden; }
+        .scrollable { overflow-y: auto; height: 100%; padding-bottom: 90px; }
+        .scrollable::-webkit-scrollbar { width: 4px; }
+        .scrollable::-webkit-scrollbar-track { background: transparent; }
+        .scrollable::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        
+        .material-symbols-outlined { font-size: 20px; }
+        .icon-sm { font-size: 16px; }
+
+        /* UI Animations */
+        .fade-in { animation: fadeIn 0.2s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+        
+        .slide-up { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        
+        .slide-down { animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes slideDown { from { transform: translateY(0); } to { transform: translateY(100%); } }
+
+        .zoom-in { animation: zoomIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes zoomIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        
+        .toast-slide { animation: toastSlide 2.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes toastSlide { 
+            0% { transform: translateY(100%); opacity: 0; } 
+            10% { transform: translateY(0); opacity: 1; }
+            90% { transform: translateY(0); opacity: 1; }
+            100% { transform: translateY(100%); opacity: 0; }
+        }
+
+        /* Subtle background pattern for hero */
+        .hero-pattern {
+            background-color: #ffffff;
+            background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <nav class="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-2">
+                    <div class="bg-emerald-100 p-1.5 rounded-lg text-emerald-700 flex items-center justify-center">
+                        <span class="material-symbols-outlined">local_pharmacy</span>
+                    </div>
+                    <span class="font-bold text-xl tracking-tight text-slate-900">PharmaTrack</span>
+                </div>
+                <div class="hidden md:flex gap-8 text-sm font-medium text-slate-600">
+                    <a href="#features" class="hover:text-emerald-600 transition">Architecture</a>
+                    <a href="#interactive-demo" class="hover:text-emerald-600 transition">Live Demo</a>
+                </div>
+                <div>
+                    <a href="#interactive-demo" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-800 transition shadow-sm">Try the App</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <section class="hero-pattern border-b border-slate-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-28 text-center flex flex-col items-center">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold uppercase tracking-wide mb-6 border border-emerald-200 shadow-sm">
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                Now deployed for DGHS Clinics
+            </div>
+            <h1 class="text-4xl md:text-6xl font-extrabold text-slate-900 leading-tight mb-6 max-w-4xl tracking-tight">
+                Clinical-grade inventory management, <span class="text-emerald-600">built for speed.</span>
+            </h1>
+            <p class="text-lg md:text-xl text-slate-600 mb-10 max-w-2xl leading-relaxed">
+                Engineered for high-volume environments. Manage dual-inventory ledgers, automate reporting, and dispense faster with a modern, mobile-first interface.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4">
+                <a href="#interactive-demo" class="bg-emerald-600 text-white px-8 py-3.5 rounded-xl font-semibold hover:bg-emerald-700 transition shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2">
+                    <span class="material-symbols-outlined icon-sm">touch_app</span> Experience Interactive Demo
+                </a>
+                <a href="#features" class="bg-white border border-slate-300 text-slate-700 px-8 py-3.5 rounded-xl font-semibold hover:bg-slate-50 transition flex items-center justify-center gap-2">
+                    Explore Architecture
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <section id="interactive-demo" class="py-20 lg:py-32 bg-slate-900 text-white overflow-hidden">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid lg:grid-cols-2 gap-16 items-center">
+                
+                <div class="max-w-lg">
+                    <h2 class="text-3xl md:text-4xl font-bold mb-6 leading-tight">Test drive the complete Android experience.</h2>
+                    <p class="text-slate-400 mb-8 leading-relaxed text-lg">
+                        This isn't a video or a static screenshot. The mockup on the right is a fully functional web port of the PharmaTrack UI, running directly in your browser.
+                    </p>
+                    
+                    <div class="space-y-6">
+                        <div class="flex items-start gap-4 bg-slate-800/50 p-4 rounded-2xl border border-slate-700">
+                            <div class="bg-emerald-500/20 p-2 rounded-lg text-emerald-400 shrink-0"><span class="material-symbols-outlined">database</span></div>
+                            <div>
+                                <h4 class="font-semibold text-slate-200 mb-1">Persistent Local Database</h4>
+                                <p class="text-sm text-slate-400">Add a product in the Catalog, and watch it instantly appear in the Dispense and Transfer modules. Data saves to your browser's local storage.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-4 bg-slate-800/50 p-4 rounded-2xl border border-slate-700">
+                            <div class="bg-sky-500/20 p-2 rounded-lg text-sky-400 shrink-0"><span class="material-symbols-outlined">filter_list</span></div>
+                            <div>
+                                <h4 class="font-semibold text-slate-200 mb-1">Smart Visibility Toggles</h4>
+                                <p class="text-sm text-slate-400">Navigate to Dispense or Transfer. Notice how out-of-stock items are automatically hidden to keep your workflow clean. Click the eye icon to reveal them.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-4 bg-slate-800/50 p-4 rounded-2xl border border-slate-700">
+                            <div class="bg-indigo-500/20 p-2 rounded-lg text-indigo-400 shrink-0"><span class="material-symbols-outlined">layers</span></div>
+                            <div>
+                                <h4 class="font-semibold text-slate-200 mb-1">Material 3 Design System</h4>
+                                <p class="text-sm text-slate-400">Interact with bottom sheets, native-feeling toast notifications, and segment controls exactly as they look in the Jetpack Compose app.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-center relative z-10">
+                    <div class="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full transform -translate-x-10 translate-y-10"></div>
+                    
+                    <div class="relative border-slate-800 bg-slate-800 border-[12px] rounded-[3rem] h-[720px] w-[340px] shadow-2xl overflow-hidden shrink-0 flex flex-col z-20 shadow-black/50">
+                        <div class="absolute top-0 inset-x-0 h-6 bg-slate-800 rounded-b-2xl w-36 mx-auto z-50"></div>
+                        
+                        <div class="app-container h-full w-full flex flex-col relative text-slate-800 bg-slate-50">
+
+                            <div id="screen-dashboard" class="screen h-full w-full fade-in">
+                                <div class="scrollable">
+                                    <div class="p-4 pt-10">
+                                        <div class="text-[12px] font-medium text-emerald-600 mb-1" id="dash-date">Loading...</div>
+                                        <div class="text-2xl font-bold text-slate-900 mb-1" id="dash-greeting">Good Afternoon, Habibul</div>
+                                        <div class="flex items-center text-slate-500 text-xs">
+                                            <span class="material-symbols-outlined icon-sm mr-1">business</span> DGHS Primary Care
+                                        </div>
+                                    </div>
+
+                                    <div class="flex gap-3 px-4 mb-5">
+                                        <div onclick="navigate('screen-dispense', document.getElementById('nav-dispense'))" class="flex-1 bg-emerald-50 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer hover:bg-emerald-100 transition shadow-sm border border-emerald-100/50 active:scale-95">
+                                            <span class="material-symbols-outlined text-emerald-600 mb-1">medication</span>
+                                            <span class="text-[11px] font-semibold text-emerald-700">Dispense</span>
+                                        </div>
+                                        <div onclick="navigate('screen-transfer')" class="flex-1 bg-sky-50 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer hover:bg-sky-100 transition shadow-sm border border-sky-100/50 active:scale-95">
+                                            <span class="material-symbols-outlined text-sky-600 mb-1">swap_horiz</span>
+                                            <span class="text-[11px] font-semibold text-sky-700">Transfer</span>
+                                        </div>
+                                        <div onclick="navigate('screen-stockin')" class="flex-1 bg-indigo-50 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-100 transition shadow-sm border border-indigo-100/50 active:scale-95">
+                                            <span class="material-symbols-outlined text-indigo-600 mb-1">add_box</span>
+                                            <span class="text-[11px] font-semibold text-indigo-700">Stock In</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="px-4 mb-5 grid grid-cols-2 gap-3 mt-4">
+                                        <div class="bg-white rounded-xl p-3 border border-slate-200 cursor-pointer hover:bg-slate-50 transition shadow-sm active:scale-95" onclick="navigate('screen-products')">
+                                            <div class="flex justify-between items-center mb-2">
+                                                <span class="text-[11px] font-semibold text-slate-500 uppercase">Catalog</span>
+                                                <div class="bg-emerald-100 p-1 rounded-full"><span class="material-symbols-outlined text-emerald-700 text-[12px]">inventory_2</span></div>
+                                            </div>
+                                            <div class="text-2xl font-bold text-slate-800" id="stat-total-products">0</div>
+                                        </div>
+                                        <div class="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                                            <div class="flex justify-between items-center mb-2">
+                                                <span class="text-[11px] font-semibold text-slate-500 uppercase">Dispensed</span>
+                                                <div class="bg-purple-100 p-1 rounded-full"><span class="material-symbols-outlined text-purple-700 text-[12px]">local_activity</span></div>
+                                            </div>
+                                            <div class="text-2xl font-bold text-slate-800">42</div>
+                                        </div>
+                                        <div class="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                                            <div class="flex justify-between items-center mb-2">
+                                                <span class="text-[11px] font-semibold text-slate-500 uppercase">Main Value</span>
+                                                <div class="bg-blue-100 p-1 rounded-full"><span class="material-symbols-outlined text-blue-700 text-[12px]">account_balance_wallet</span></div>
+                                            </div>
+                                            <div class="text-xl font-bold text-slate-800 mt-1">৳85.4K</div>
+                                        </div>
+                                        <div class="bg-orange-50 rounded-xl p-3 border border-orange-100 shadow-sm">
+                                            <div class="flex justify-between items-center mb-2">
+                                                <span class="text-[11px] font-semibold text-orange-600 uppercase">Out of Stock</span>
+                                                <div class="bg-orange-200 p-1 rounded-full"><span class="material-symbols-outlined text-orange-700 text-[12px]">warning</span></div>
+                                            </div>
+                                            <div class="text-2xl font-bold text-orange-600" id="stat-out-stock">0</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="px-4 mt-2">
+                                        <div class="bg-slate-800 text-white rounded-xl p-4 text-xs font-medium leading-relaxed border border-slate-700 relative overflow-hidden">
+                                            <div class="absolute right-[-10px] top-[-10px] opacity-10"><span class="material-symbols-outlined text-[80px]">touch_app</span></div>
+                                            <span class="text-emerald-400 font-bold mb-1 block">Pro Tip:</span>
+                                            Tap <b>Catalog</b> or use the bottom navigation bar to manage the database and watch stats update!
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="screen-products" class="screen h-full w-full hidden fade-in flex flex-col bg-white">
+                                <div class="bg-white flex items-center p-4 pt-10 border-b border-slate-100 z-10 shrink-0">
+                                    <span class="material-symbols-outlined mr-3 cursor-pointer p-1 -ml-1 rounded-full hover:bg-slate-100" onclick="navigate('screen-dashboard', document.getElementById('nav-dashboard'))">arrow_back</span>
+                                    <span class="material-symbols-outlined text-emerald-600 mr-2">inventory_2</span>
+                                    <span class="font-semibold text-[17px] flex-1">Products Catalog</span>
+                                </div>
+                                
+                                <div class="flex bg-slate-50 px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase shrink-0 border-b border-slate-200">
+                                    <div class="flex-1 tracking-wider">Details</div>
+                                    <div class="w-[85px] text-center tracking-wider">Stocks (M/P)</div>
+                                    <div class="w-12 text-right tracking-wider">Price</div>
+                                </div>
+                                
+                                <div class="scrollable relative bg-white" id="product-list-container"></div>
+
+                                <div onclick="openProductSheet()" class="absolute bottom-24 right-4 bg-emerald-600 h-14 w-14 rounded-2xl shadow-lg shadow-emerald-600/30 flex items-center justify-center text-white cursor-pointer hover:bg-emerald-700 transition active:scale-95 z-20">
+                                    <span class="material-symbols-outlined">add</span>
+                                </div>
+                            </div>
+
+                            <div id="screen-dispense" class="screen h-full w-full hidden fade-in flex flex-col bg-white">
+                                <div class="bg-white flex items-center p-4 pt-10 border-b border-slate-100 z-10 shrink-0">
+                                    <span class="material-symbols-outlined mr-3 cursor-pointer p-1 -ml-1 rounded-full hover:bg-slate-100" onclick="navigate('screen-dashboard', document.getElementById('nav-dashboard'))">arrow_back</span>
+                                    <div class="bg-emerald-100 text-emerald-700 rounded p-1 text-xs mr-2 flex items-center justify-center"><span class="material-symbols-outlined text-[14px]">medication</span></div>
+                                    <span class="font-semibold text-[17px] flex-1">Dispense</span>
+                                    <span id="dispense-eye" class="material-symbols-outlined text-emerald-600 cursor-pointer icon-sm p-2 hover:bg-emerald-50 rounded-full transition" onclick="toggleVisibility('dispense')">visibility_off</span>
+                                </div>
+                                <div class="p-3 bg-white border-b border-slate-100 shrink-0">
+                                    <div class="border border-slate-200 rounded-lg p-2.5 text-xs text-slate-400 flex items-center bg-slate-50">
+                                        <span class="material-symbols-outlined icon-sm mr-2">search</span> Search medicines...
+                                    </div>
+                                </div>
+                                <div class="flex bg-slate-50 px-3 py-2 text-[9px] font-bold text-slate-500 uppercase shrink-0 border-b border-slate-200">
+                                    <div class="flex-1 tracking-wider">Medicine</div>
+                                    <div class="w-12 text-center tracking-wider">Stock</div>
+                                    <div class="w-20 pl-2 tracking-wider">Qty</div>
+                                </div>
+                                <div class="scrollable relative bg-white" id="dispense-list-container"></div>
+                                
+                                <div class="absolute bottom-[70px] inset-x-0 bg-white shadow-[0_-15px_30px_rgba(0,0,0,0.05)] border-t border-slate-100 p-4 flex justify-between items-center z-20">
+                                    <div class="text-sm font-bold text-slate-800">Total: ৳0.00</div>
+                                    <button onclick="showToast('Dispense logic simulated in demo')" class="bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 active:scale-95 transition shadow-sm">
+                                        <span class="material-symbols-outlined icon-sm">save</span> Confirm
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="screen-transfer" class="screen h-full w-full hidden fade-in flex flex-col bg-white">
+                                <div class="bg-white flex items-center p-4 pt-10 border-b border-slate-100 z-10 shrink-0">
+                                    <span class="material-symbols-outlined mr-3 cursor-pointer p-1 -ml-1 rounded-full hover:bg-slate-100" onclick="navigate('screen-dashboard', document.getElementById('nav-dashboard'))">arrow_back</span>
+                                    <span class="material-symbols-outlined text-sky-600 mr-2">swap_horiz</span>
+                                    <span class="font-semibold text-[17px] flex-1">Transfer</span>
+                                    <span id="transfer-eye" class="material-symbols-outlined text-sky-600 cursor-pointer icon-sm p-2 hover:bg-sky-50 rounded-full transition" onclick="toggleVisibility('transfer')">visibility_off</span>
+                                </div>
+                                <div class="flex bg-slate-50 px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase shrink-0 border-b border-slate-200">
+                                    <div class="flex-1 tracking-wider">Medicine</div>
+                                    <div class="w-10 text-center tracking-wider">Main</div>
+                                    <div class="w-10 text-center tracking-wider">Pharm</div>
+                                    <div class="w-16 pl-2 tracking-wider">Qty</div>
+                                </div>
+                                <div class="scrollable relative bg-white" id="transfer-list-container"></div>
+                                
+                                <div class="absolute bottom-0 inset-x-0 bg-white shadow-[0_-15px_30px_rgba(0,0,0,0.05)] border-t border-slate-100 p-4 flex justify-between items-center z-20 pb-8">
+                                    <div class="text-sm font-semibold text-slate-500">Ready to transfer</div>
+                                    <button onclick="showToast('Transfer logic simulated in demo')" class="bg-sky-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 active:scale-95 transition shadow-sm">
+                                        <span class="material-symbols-outlined icon-sm">save</span> Transfer Items
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="screen-stockin" class="screen h-full w-full hidden fade-in flex flex-col bg-white">
+                                <div class="bg-white flex items-center p-4 pt-10 border-b border-slate-100 z-10 shrink-0">
+                                    <span class="material-symbols-outlined mr-3 cursor-pointer p-1 -ml-1 rounded-full hover:bg-slate-100" onclick="navigate('screen-dashboard', document.getElementById('nav-dashboard'))">arrow_back</span>
+                                    <span class="material-symbols-outlined text-indigo-600 mr-2">add_box</span>
+                                    <span class="font-semibold text-[17px] flex-1">Main Stock Entry</span>
+                                    <span id="stockin-eye" class="material-symbols-outlined text-indigo-600 cursor-pointer icon-sm p-2 hover:bg-indigo-50 rounded-full transition" onclick="toggleVisibility('stockin')">visibility</span>
+                                </div>
+                                <div class="flex bg-slate-50 px-3 py-2.5 text-[9px] font-bold text-slate-500 uppercase shrink-0 border-b border-slate-200">
+                                    <div class="flex-1 tracking-wider">Product</div>
+                                    <div class="w-12 text-center tracking-wider">Stock</div>
+                                    <div class="w-16 pl-2 tracking-wider">Add Qty</div>
+                                </div>
+                                <div class="scrollable relative bg-white" id="stockin-list-container"></div>
+                                
+                                <div class="absolute bottom-0 inset-x-0 bg-white shadow-[0_-15px_30px_rgba(0,0,0,0.05)] border-t border-slate-100 p-4 flex justify-between items-center z-20 pb-8">
+                                    <div class="text-sm font-semibold text-slate-500">Ready to stock</div>
+                                    <button onclick="showToast('Stock In logic simulated in demo')" class="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 active:scale-95 transition shadow-sm">
+                                        <span class="material-symbols-outlined icon-sm">save</span> Submit Stock
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="screen-ledger" class="screen h-full w-full hidden fade-in flex flex-col bg-white">
+                                <div class="bg-white flex items-center p-4 pt-10 border-b border-slate-100 z-10 shrink-0">
+                                    <span class="font-semibold text-[17px] flex-1 text-center">Stock Ledger</span>
+                                </div>
+                                <div class="scrollable bg-slate-50">
+                                    <div class="p-4">
+                                        <div class="border border-slate-200 rounded-xl p-3 text-sm flex justify-between items-center font-medium bg-white shadow-sm cursor-pointer hover:border-emerald-500 transition" onclick="showToast('Product selector simulated')">
+                                            <div class="flex items-center"><span class="material-symbols-outlined icon-sm text-emerald-600 mr-2 bg-emerald-50 p-1 rounded">assignment</span> Seclo 20mg</div>
+                                            <span class="material-symbols-outlined text-slate-400">arrow_drop_down</span>
+                                        </div>
+                                    </div>
+                                    <div class="px-4 flex justify-center mb-5">
+                                        <div class="bg-emerald-600 text-white px-6 py-2 rounded-l-lg text-xs font-semibold border border-emerald-600 cursor-pointer shadow-sm">Pharmacy</div>
+                                        <div class="bg-white text-slate-600 px-6 py-2 rounded-r-lg text-xs font-semibold border border-slate-200 border-l-0 cursor-pointer hover:bg-slate-50 shadow-sm">Main Stock</div>
+                                    </div>
+                                    <div class="px-4 flex justify-between mb-5">
+                                        <div class="bg-white border border-slate-200 shadow-sm text-[10px] font-bold px-3 py-1.5 rounded-lg flex flex-col items-center flex-1 mx-1">
+                                            <span class="text-slate-400 uppercase text-[8px] mb-0.5">Total In</span>
+                                            <span class="text-emerald-600">+500</span>
+                                        </div>
+                                        <div class="bg-white border border-slate-200 shadow-sm text-[10px] font-bold px-3 py-1.5 rounded-lg flex flex-col items-center flex-1 mx-1">
+                                            <span class="text-slate-400 uppercase text-[8px] mb-0.5">Total Out</span>
+                                            <span class="text-red-500">-380</span>
+                                        </div>
+                                        <div class="bg-emerald-50 border border-emerald-100 shadow-sm text-[10px] font-bold px-3 py-1.5 rounded-lg flex flex-col items-center flex-1 mx-1">
+                                            <span class="text-emerald-700 uppercase text-[8px] mb-0.5">Balance</span>
+                                            <span class="text-emerald-700 text-lg">120</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="bg-white border-t border-slate-200 flex flex-col h-full">
+                                        <div class="flex bg-slate-50 px-3 py-2 text-[9px] font-bold text-slate-500 uppercase border-b border-slate-200">
+                                            <div class="w-12 tracking-wider">Date</div>
+                                            <div class="flex-1 tracking-wider">Details</div>
+                                            <div class="w-8 text-emerald-600 tracking-wider">IN</div>
+                                            <div class="w-8 text-red-500 tracking-wider">OUT</div>
+                                            <div class="w-10 text-right tracking-wider">Bal</div>
+                                        </div>
+                                        
+                                        <div class="flex px-3 py-3 border-b border-slate-100 items-center bg-emerald-50/50">
+                                            <div class="w-12 text-[9px] font-bold text-slate-700">1 Jun</div>
+                                            <div class="flex-1 pr-2"><div class="text-[10px] font-bold text-slate-800">Opening Balance</div></div>
+                                            <div class="w-8 text-[10px] text-slate-400">-</div>
+                                            <div class="w-8 text-[10px] text-slate-400">-</div>
+                                            <div class="w-10 text-[10px] font-bold text-slate-800 text-right">0</div>
+                                        </div>
+                                        <div class="flex px-3 py-3 border-b border-slate-100 items-center bg-white">
+                                            <div class="w-12 text-[9px] text-slate-600">12 Jun</div>
+                                            <div class="flex-1 pr-2">
+                                                <div class="text-[10px] font-semibold text-slate-800">IN ← Main</div>
+                                                <div class="text-[9px] text-slate-500 mt-0.5">Batch: B-291</div>
+                                            </div>
+                                            <div class="w-8 text-[10px] text-emerald-600 font-semibold">+500</div>
+                                            <div class="w-8 text-[10px] text-slate-400">-</div>
+                                            <div class="w-10 text-[10px] font-bold text-slate-800 text-right">500</div>
+                                        </div>
+                                        <div class="flex px-3 py-3 border-b border-slate-100 items-center bg-white">
+                                            <div class="w-12 text-[9px] text-slate-600">28 Jun</div>
+                                            <div class="flex-1 pr-2">
+                                                <div class="text-[10px] font-semibold text-slate-800">Dispensed</div>
+                                                <div class="text-[9px] text-slate-500 mt-0.5">Pt: John Doe</div>
+                                            </div>
+                                            <div class="w-8 text-[10px] text-slate-400">-</div>
+                                            <div class="w-8 text-[10px] text-red-500 font-semibold">-380</div>
+                                            <div class="w-10 text-[10px] font-bold text-slate-800 text-right">120</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="screen-more" class="screen h-full w-full hidden fade-in flex flex-col bg-slate-50">
+                                <div class="bg-white flex items-center p-4 pt-10 border-b border-slate-100 shrink-0 z-10 shadow-sm">
+                                    <span class="font-semibold text-[17px] flex-1 text-center">Menu</span>
+                                </div>
+                                <div class="scrollable p-4 space-y-5">
+                                    
+                                    <div class="bg-emerald-100/50 rounded-2xl p-4 flex items-center border border-emerald-200/50 shadow-sm">
+                                        <div class="w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xl font-bold shadow-inner">H</div>
+                                        <div class="ml-4">
+                                            <div class="font-bold text-slate-900 text-base">Habibul Hasan Hasib</div>
+                                            <div class="text-xs text-emerald-800 mt-0.5">admin@pharmatrack.com</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex justify-between items-center">
+                                        <div class="flex items-center">
+                                            <span class="material-symbols-outlined text-emerald-500 text-3xl mr-3 bg-emerald-50 rounded-full p-1">cloud_done</span>
+                                            <div>
+                                                <div class="font-bold text-sm text-slate-800">App is Online</div>
+                                                <div class="text-[10px] text-slate-500 mt-0.5">Data is safely synced</div>
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <div class="text-[9px] text-slate-400 uppercase tracking-wider">Last Synced</div>
+                                            <div class="text-[10px] font-medium text-slate-700 mt-0.5">Just now</div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div class="text-[10px] font-bold text-emerald-600 mb-2.5 pl-2 tracking-wider uppercase">Catalog & Logs</div>
+                                        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                                            <div onclick="navigate('screen-products', document.getElementById('nav-products'))" class="flex items-center p-3.5 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition active:bg-slate-100">
+                                                <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center mr-3"><span class="material-symbols-outlined icon-sm">inventory_2</span></div>
+                                                <div class="flex-1">
+                                                    <div class="text-sm font-semibold text-slate-800">Products Database</div>
+                                                    <div class="text-[10px] text-slate-500 mt-0.5">Manage generic and brand names</div>
+                                                </div>
+                                                <span class="material-symbols-outlined text-slate-300">chevron_right</span>
+                                            </div>
+                                            <div class="flex items-center p-3.5 hover:bg-slate-50 transition cursor-pointer active:bg-slate-100" onclick="showToast('Logs view simulated')">
+                                                <div class="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center mr-3"><span class="material-symbols-outlined icon-sm">assignment</span></div>
+                                                <div class="flex-1">
+                                                    <div class="text-sm font-semibold text-slate-800">Inventory Log</div>
+                                                    <div class="text-[10px] text-slate-500 mt-0.5">View daily transactions</div>
+                                                </div>
+                                                <span class="material-symbols-outlined text-slate-300">chevron_right</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div class="text-[10px] font-bold text-emerald-600 mb-2.5 pl-2 tracking-wider uppercase">Stock Management</div>
+                                        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                                            <div onclick="navigate('screen-stockin')" class="flex items-center p-3.5 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition active:bg-slate-100">
+                                                <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center mr-3"><span class="material-symbols-outlined icon-sm">add_box</span></div>
+                                                <div class="flex-1">
+                                                    <div class="text-sm font-semibold text-slate-800">Main Stock Entry</div>
+                                                </div>
+                                                <span class="material-symbols-outlined text-slate-300">chevron_right</span>
+                                            </div>
+                                            <div onclick="navigate('screen-transfer')" class="flex items-center p-3.5 hover:bg-slate-50 transition cursor-pointer active:bg-slate-100">
+                                                <div class="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center mr-3"><span class="material-symbols-outlined icon-sm">swap_horiz</span></div>
+                                                <div class="flex-1">
+                                                    <div class="text-sm font-semibold text-slate-800">Transfer to Pharmacy</div>
+                                                </div>
+                                                <span class="material-symbols-outlined text-slate-300">chevron_right</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="text-center text-[10px] text-slate-400 mt-6 pb-4 font-medium tracking-wide">Version 1.2.4</div>
+                                </div>
+                            </div>
+
+                            <div id="bottom-nav" class="absolute bottom-0 inset-x-0 h-[70px] bg-white border-t border-slate-200 flex justify-around items-center px-2 pb-2 z-30 shadow-[0_-5px_15px_rgba(0,0,0,0.02)]">
+                                <div id="nav-dashboard" onclick="navigate('screen-dashboard', this)" class="nav-item flex flex-col items-center flex-1 cursor-pointer text-emerald-600 transition">
+                                    <span class="material-symbols-outlined mb-1 text-[22px]">dashboard</span>
+                                    <span class="text-[10px] font-medium">Dashboard</span>
+                                </div>
+                                <div id="nav-dispense" onclick="navigate('screen-dispense', this)" class="nav-item flex flex-col items-center flex-1 cursor-pointer text-slate-400 hover:text-emerald-500 transition">
+                                    <span class="material-symbols-outlined mb-1 text-[26px]">add_circle</span>
+                                    <span class="text-[10px] font-bold">Dispense</span>
+                                </div>
+                                <div id="nav-ledger" onclick="navigate('screen-ledger', this)" class="nav-item flex flex-col items-center flex-1 cursor-pointer text-slate-400 hover:text-emerald-500 transition">
+                                    <span class="material-symbols-outlined mb-1 text-[22px]">history</span>
+                                    <span class="text-[10px] font-medium">Ledger</span>
+                                </div>
+                                <div id="nav-more" onclick="navigate('screen-more', this)" class="nav-item flex flex-col items-center flex-1 cursor-pointer text-slate-400 hover:text-emerald-500 transition">
+                                    <span class="material-symbols-outlined mb-1 text-[22px]">menu</span>
+                                    <span class="text-[10px] font-medium">More</span>
+                                </div>
+                            </div>
+
+                            <div id="bottom-sheet-overlay" class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-40 hidden flex-col justify-end transition-opacity" onclick="if(event.target === this) closeProductSheet()">
+                                <div id="bottom-sheet" class="bg-white rounded-t-3xl w-full flex flex-col translate-y-full shadow-2xl">
+                                    <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-3xl">
+                                        <h2 class="font-bold text-lg text-slate-800">Register Product</h2>
+                                        <span class="material-symbols-outlined text-slate-400 cursor-pointer hover:text-slate-700 bg-white rounded-full shadow-sm p-1 border border-slate-100" onclick="closeProductSheet()">close</span>
+                                    </div>
+                                    <div class="p-5 space-y-4 overflow-y-auto max-h-[450px]">
+                                        <div>
+                                            <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Brand Name</label>
+                                            <input type="text" id="input-brand" class="w-full border border-slate-200 rounded-xl p-3 text-sm mt-1.5 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition bg-slate-50 focus:bg-white" placeholder="e.g. Seclo 20mg">
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Generic / ID</label>
+                                            <input type="text" id="input-id" class="w-full border border-slate-200 rounded-xl p-3 text-sm mt-1.5 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition bg-slate-50 focus:bg-white" placeholder="e.g. SEC-20-TAB">
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Type</label>
+                                                <select id="input-type" class="w-full border border-slate-200 rounded-xl p-3 text-sm mt-1.5 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition bg-slate-50 focus:bg-white appearance-none">
+                                                    <option value="tablet">Tablet</option>
+                                                    <option value="capsule">Capsule</option>
+                                                    <option value="syrup">Syrup</option>
+                                                    <option value="injection">Injection</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Unit</label>
+                                                <input type="text" id="input-unit" class="w-full border border-slate-200 rounded-xl p-3 text-sm mt-1.5 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition bg-slate-50 focus:bg-white" placeholder="pcs" value="pcs">
+                                            </div>
+                                        </div>
+                                        <div class="grid grid-cols-3 gap-3">
+                                            <div>
+                                                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Main Qty</label>
+                                                <input type="number" id="input-main" class="w-full border border-slate-200 rounded-xl p-3 text-sm mt-1.5 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition bg-slate-50 focus:bg-white" value="0">
+                                            </div>
+                                            <div>
+                                                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pharm Qty</label>
+                                                <input type="number" id="input-pharm" class="w-full border border-slate-200 rounded-xl p-3 text-sm mt-1.5 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition bg-slate-50 focus:bg-white" value="0">
+                                            </div>
+                                            <div>
+                                                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Price (৳)</label>
+                                                <input type="number" id="input-price" class="w-full border border-slate-200 rounded-xl p-3 text-sm mt-1.5 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition bg-slate-50 focus:bg-white" value="0.0" step="0.1">
+                                            </div>
+                                        </div>
+                                        <button onclick="saveProduct()" class="w-full bg-emerald-600 text-white font-semibold rounded-xl py-3.5 mt-4 hover:bg-emerald-700 transition active:scale-[0.98] shadow-lg shadow-emerald-600/20">Commit Parameters</button>
+                                        <div class="h-4"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="dialog-overlay" class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden items-center justify-center p-4" onclick="if(event.target === this) closeDialog()">
+                                <div id="dialog-box" class="bg-white rounded-3xl w-full max-w-[280px] p-6 zoom-in shadow-2xl">
+                                    <div class="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-4">
+                                        <span class="material-symbols-outlined">delete</span>
+                                    </div>
+                                    <h3 class="font-bold text-slate-900 text-lg mb-2">Delete Product</h3>
+                                    <p class="text-sm text-slate-500 mb-6 leading-relaxed" id="dialog-text">Hide documentation entries for this item?</p>
+                                    <div class="flex justify-end gap-3">
+                                        <button onclick="closeDialog()" class="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition">Cancel</button>
+                                        <button id="dialog-confirm-btn" class="px-5 py-2.5 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 rounded-xl transition shadow-md shadow-red-600/20 active:scale-95">Purge</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="toast-container" class="absolute bottom-24 inset-x-0 flex justify-center z-50 pointer-events-none hidden">
+                                <div id="toast-message" class="bg-slate-800/90 backdrop-blur-sm text-white text-xs px-5 py-3 rounded-full shadow-xl font-medium tracking-wide flex items-center gap-2">
+                                    Message saved
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="features" class="py-20 bg-slate-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-16">
+                <h2 class="text-3xl font-bold text-slate-900 mb-4">Under the Hood</h2>
+                <p class="text-slate-600">PharmaTrack uses a modern Android technology stack engineered for stability, offline-first reliability, and clean code principles.</p>
+            </div>
+            
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
+                    <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mb-6"><span class="material-symbols-outlined">code</span></div>
+                    <h3 class="font-bold text-lg mb-3">Kotlin & Jetpack Compose</h3>
+                    <p class="text-sm text-slate-500 leading-relaxed">Built entirely with Kotlin and Jetpack Compose for a declarative, reactive, and strictly typed UI that effortlessly scales across different device sizes.</p>
+                </div>
+                <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
+                    <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center mb-6"><span class="material-symbols-outlined">cloud_sync</span></div>
+                    <h3 class="font-bold text-lg mb-3">Firebase Firestore Sync</h3>
+                    <p class="text-sm text-slate-500 leading-relaxed">Utilizes Firebase Firestore with persistent local caching. This guarantees that operations continue seamlessly even when clinic internet connections fail.</p>
+                </div>
+                <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
+                    <div class="w-12 h-12 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center mb-6"><span class="material-symbols-outlined">schema</span></div>
+                    <h3 class="font-bold text-lg mb-3">MVVM Architecture</h3>
+                    <p class="text-sm text-slate-500 leading-relaxed">Strict adherence to Model-View-ViewModel principles using Hilt for Dependency Injection, ensuring code remains decoupled, testable, and maintainable.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="bg-slate-900 text-slate-400 py-10 border-t border-slate-800 text-sm text-center">
+        <div class="max-w-7xl mx-auto px-4">
+            <p class="font-medium text-slate-300 mb-2">Designed and developed by Habibul Hasan Hasib, Pharmacist.</p>
+            <p>&copy; 2026 PharmaTrack. Built for the Directorate General of Health Services.</p>
+        </div>
+    </footer>
+
+    <script>
+        /* 1. STATE MANAGEMENT & LOCAL STORAGE */
+        const STORAGE_KEY = 'pharmaTrack_landing_v1';
+        
+        const initialDemoProducts = [
+            { id: "SEC-20-TAB", brandName: "Seclo 20mg", type: "tablet", mainStock: 500, pharmacyStock: 120, defaultPrice: 5.0, unit: "pcs" },
+            { id: "TUS-PL-SYP", brandName: "Tuska Plus", type: "syrup", mainStock: 45, pharmacyStock: 5, defaultPrice: 65.0, unit: "btl" },
+            { id: "MAX-40-INJ", brandName: "Maxpro 40", type: "injection", mainStock: 120, pharmacyStock: 0, defaultPrice: 90.0, unit: "vial" }
+        ];
+
+        let dbProducts = [];
+        let viewStates = {
+            dispense: false, // hidden by default
+            transfer: false, // hidden by default
+            stockin: true    // visible by default
+        };
+
+        function initDatabase() {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored) {
+                dbProducts = JSON.parse(stored);
+            } else {
+                dbProducts = [...initialDemoProducts];
+                saveToStorage();
+            }
+            updateUI();
+        }
+
+        function saveToStorage() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(dbProducts));
+        }
+
+        /* 2. UI RENDERING */
+        function updateUI() {
+            // Dashboard Stats
+            document.getElementById('stat-total-products').innerText = dbProducts.length;
+            document.getElementById('stat-out-stock').innerText = dbProducts.filter(p => p.pharmacyStock === 0).length;
+
+            renderProductsList();
+            renderDispenseList();
+            renderTransferList();
+            renderStockInList();
+        }
+
+        function getBadgeInfo(type) {
+            let iconStr = "local_hospital", badgeColors = "bg-slate-100 text-slate-600";
+            switch(type.toLowerCase()) {
+                case "tablet": case "capsule": iconStr = "medication"; badgeColors = "bg-blue-50 text-blue-600"; break;
+                case "syrup": iconStr = "science"; badgeColors = "bg-orange-50 text-orange-600"; break;
+                case "injection": iconStr = "vaccines"; badgeColors = "bg-green-50 text-green-700"; break;
+            }
+            return { iconStr, badgeColors };
+        }
+
+        function renderProductsList() {
+            const container = document.getElementById('product-list-container');
+            container.innerHTML = dbProducts.length ? '' : `<div class="p-8 text-center text-sm text-slate-400 mt-10">No products found.</div>`;
+
+            dbProducts.forEach(product => {
+                const { iconStr, badgeColors } = getBadgeInfo(product.type);
+                const safeBrand = product.brandName.replace(/'/g, "\\'");
+                const safeId = product.id.replace(/'/g, "\\'");
+
+                container.innerHTML += `
+                    <div class="flex px-3 py-3 border-b border-slate-100 items-center bg-white">
+                        <div class="flex-1 pr-2 overflow-hidden">
+                            <div class="inline-flex items-center gap-1 ${badgeColors} px-1.5 py-0.5 rounded mb-1.5">
+                                <span class="material-symbols-outlined text-[10px]">${iconStr}</span>
+                                <span class="text-[8px] font-bold tracking-wider uppercase">${product.type}</span>
+                            </div>
+                            <div class="text-[13px] font-semibold text-slate-800 leading-tight truncate">${product.brandName}</div>
+                            <div class="text-[9px] text-slate-500 mt-0.5 font-medium">ID: ${product.id}</div>
+                        </div>
+                        <div class="w-[85px] flex justify-center items-center text-xs">
+                            <span class="font-semibold ${product.mainStock === 0 ? 'text-red-500' : 'text-slate-800'}">${product.mainStock}</span>
+                            <span class="text-slate-300 mx-1">/</span>
+                            <span class="font-semibold ${product.pharmacyStock === 0 ? 'text-red-500' : 'text-slate-600'}">${product.pharmacyStock}</span>
+                        </div>
+                        <div class="w-12 text-right">
+                            <div class="text-xs font-semibold text-slate-800">৳${parseFloat(product.defaultPrice).toFixed(1)}</div>
+                            <div class="text-[8px] text-slate-400 font-medium">${product.unit}</div>
+                        </div>
+                        <div class="pl-2">
+                            <span class="material-symbols-outlined text-red-400 hover:text-red-600 cursor-pointer icon-sm p-1.5 rounded-lg hover:bg-red-50 transition" onclick="triggerDelete('${safeId}', '${safeBrand}')">delete</span>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function renderDispenseList() {
+            const container = document.getElementById('dispense-list-container');
+            container.innerHTML = '';
+            let count = 0;
+            
+            dbProducts.forEach(product => {
+                const isOut = product.pharmacyStock === 0;
+                if (isOut && !viewStates.dispense) return; // Smart filtering
+                count++;
+                
+                container.innerHTML += `
+                    <div class="flex px-3 py-3 border-b border-slate-100 items-center ${isOut ? 'bg-red-50/30' : 'bg-white'}">
+                        <div class="flex-1 pr-2 overflow-hidden">
+                            <div class="text-sm font-semibold text-slate-800 truncate">${product.brandName}</div>
+                            <div class="text-[9px] text-slate-500 mt-0.5 font-medium truncate">ID: ${product.id}</div>
+                        </div>
+                        <div class="w-12 text-center">
+                            <div class="text-sm font-semibold ${isOut ? 'text-red-500' : 'text-slate-800'}">${product.pharmacyStock}</div>
+                            <div class="text-[9px] text-slate-500 font-medium">${product.unit}</div>
+                        </div>
+                        <div class="w-20 pl-2">
+                            <input type="number" placeholder="0" ${isOut ? 'disabled' : ''} class="w-full border border-slate-200 rounded-lg text-center py-2 text-sm font-medium outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 bg-slate-50 focus:bg-white transition ${isOut ? 'opacity-50' : ''}">
+                        </div>
+                    </div>
+                `;
+            });
+            if(count === 0) container.innerHTML = `<div class="p-8 text-center text-sm text-slate-400 mt-5">Items hidden by smart filter.<br>Click the eye icon to view.</div>`;
+        }
+
+        function renderTransferList() {
+            const container = document.getElementById('transfer-list-container');
+            container.innerHTML = '';
+            let count = 0;
+            
+            dbProducts.forEach(product => {
+                const isOut = product.mainStock === 0;
+                if (isOut && !viewStates.transfer) return; // Smart filtering
+                count++;
+
+                container.innerHTML += `
+                    <div class="flex px-3 py-3 border-b border-slate-100 items-center ${isOut ? 'bg-red-50/30' : 'bg-white'}">
+                        <div class="flex-1 pr-1 overflow-hidden">
+                            <div class="text-[13px] font-semibold text-slate-800 leading-tight truncate">${product.brandName}</div>
+                            <div class="text-[9px] text-slate-500 mt-0.5 font-medium truncate">ID: ${product.id}</div>
+                        </div>
+                        <div class="w-10 text-center text-sm font-semibold ${isOut ? 'text-red-500' : 'text-slate-800'}">${product.mainStock}</div>
+                        <div class="w-10 text-center text-xs font-semibold text-slate-500">${product.pharmacyStock}</div>
+                        <div class="w-16 pl-1">
+                            <input type="number" placeholder="0" ${isOut ? 'disabled' : ''} class="w-full border border-slate-200 rounded-lg text-center py-2 text-sm font-medium outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 bg-slate-50 focus:bg-white transition ${isOut ? 'opacity-50' : ''}">
+                        </div>
+                    </div>
+                `;
+            });
+            if(count === 0) container.innerHTML = `<div class="p-8 text-center text-sm text-slate-400 mt-5">Items hidden by smart filter.<br>Click the eye icon to view.</div>`;
+        }
+
+        function renderStockInList() {
+            const container = document.getElementById('stockin-list-container');
+            container.innerHTML = '';
+            let count = 0;
+            
+            dbProducts.forEach(product => {
+                const isOut = product.mainStock === 0;
+                if (isOut && !viewStates.stockin) return; // Smart filtering
+                count++;
+
+                container.innerHTML += `
+                    <div class="flex px-3 py-3 border-b border-slate-100 items-center ${isOut ? 'bg-red-50/30' : 'bg-white'}">
+                        <div class="flex-1 pr-1 overflow-hidden">
+                            <div class="text-[13px] font-semibold text-slate-800 leading-tight truncate">${product.brandName}</div>
+                            <div class="text-[9px] text-slate-500 mt-0.5 font-medium truncate">ID: ${product.id}</div>
+                        </div>
+                        <div class="w-12 text-center">
+                            <div class="text-sm font-semibold ${isOut ? 'text-red-500' : 'text-slate-800'}">${product.mainStock}</div>
+                            <div class="text-[8px] text-slate-500 font-medium">${product.unit}</div>
+                        </div>
+                        <div class="w-16 pl-1">
+                            <input type="number" placeholder="0" class="w-full border border-slate-200 rounded-lg text-center py-2 text-sm font-medium outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition">
+                        </div>
+                    </div>
+                `;
+            });
+            if(count === 0) container.innerHTML = `<div class="p-8 text-center text-sm text-slate-400 mt-5">Items hidden by smart filter.<br>Click the eye icon to view.</div>`;
+        }
+
+        /* 3. CRUD CONTROLS */
+        function saveProduct() {
+            const brand = document.getElementById('input-brand').value.trim();
+            const id = document.getElementById('input-id').value.trim() || `ID-${Math.floor(Math.random() * 10000)}`;
+            if (!brand) return showToast("Error: Brand Name is required");
+
+            const newProduct = {
+                id: id,
+                brandName: brand,
+                type: document.getElementById('input-type').value,
+                unit: document.getElementById('input-unit').value || 'pcs',
+                mainStock: parseInt(document.getElementById('input-main').value) || 0,
+                pharmacyStock: parseInt(document.getElementById('input-pharm').value) || 0,
+                defaultPrice: parseFloat(document.getElementById('input-price').value) || 0.0
+            };
+
+            dbProducts.unshift(newProduct);
+            saveToStorage();
+            updateUI();
+            closeProductSheet();
+            showToast("Product configuration synchronized");
+        }
+
+        let pendingDeleteId = null;
+        function triggerDelete(id, brandName) {
+            pendingDeleteId = id;
+            document.getElementById('dialog-text').innerText = `Hide documentation entries for '${brandName}' from future records list?`;
+            const overlay = document.getElementById('dialog-overlay');
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+        }
+
+        document.getElementById('dialog-confirm-btn').onclick = function() {
+            if (pendingDeleteId) {
+                dbProducts = dbProducts.filter(p => p.id !== pendingDeleteId);
+                saveToStorage();
+                updateUI();
+                showToast("Item purged locally");
+            }
+            closeDialog();
+        };
+
+        /* 4. UI INTERACTION HELPERS */
+        function toggleVisibility(screen) {
+            viewStates[screen] = !viewStates[screen];
+            const icon = document.getElementById(`${screen}-eye`);
+            icon.innerText = viewStates[screen] ? 'visibility' : 'visibility_off';
+            updateUI();
+        }
+
+        function openProductSheet() {
+            document.getElementById('input-brand').value = '';
+            document.getElementById('input-id').value = '';
+            document.getElementById('input-main').value = '0';
+            document.getElementById('input-pharm').value = '0';
+            document.getElementById('input-price').value = '0.0';
+
+            const overlay = document.getElementById('bottom-sheet-overlay');
+            const sheet = document.getElementById('bottom-sheet');
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+            sheet.classList.remove('slide-down');
+            sheet.classList.add('slide-up');
+        }
+
+        function closeProductSheet() {
+            const sheet = document.getElementById('bottom-sheet');
+            sheet.classList.remove('slide-up');
+            sheet.classList.add('slide-down');
+            setTimeout(() => {
+                document.getElementById('bottom-sheet-overlay').classList.add('hidden');
+                document.getElementById('bottom-sheet-overlay').classList.remove('flex');
+            }, 300);
+        }
+
+        function closeDialog() {
+            document.getElementById('dialog-overlay').classList.add('hidden');
+            document.getElementById('dialog-overlay').classList.remove('flex');
+            pendingDeleteId = null;
+        }
+
+        let toastTimeout;
+        function showToast(message) {
+            const container = document.getElementById('toast-container');
+            const msgEl = document.getElementById('toast-message');
+            
+            clearTimeout(toastTimeout);
+            container.classList.remove('hidden');
+            container.classList.remove('toast-slide');
+            msgEl.innerHTML = `<span class="material-symbols-outlined icon-sm text-emerald-400">info</span> ${message}`;
+            
+            void container.offsetWidth; 
+            container.classList.add('toast-slide');
+            
+            toastTimeout = setTimeout(() => {
+                container.classList.add('hidden');
+                container.classList.remove('toast-slide');
+            }, 2500);
+        }
+
+        function navigate(screenId, navElement = null) {
+            const targetScreen = document.getElementById(screenId);
+            const bottomNav = document.getElementById('bottom-nav');
+            
+            document.querySelectorAll('.screen').forEach(el => el.classList.add('hidden'));
+            targetScreen.classList.remove('hidden');
+
+            const mainScreens = ['screen-dashboard', 'screen-dispense', 'screen-ledger', 'screen-more'];
+            if (mainScreens.includes(screenId)) {
+                bottomNav.classList.remove('hidden');
+                bottomNav.classList.add('flex');
+                
+                if(navElement) {
+                    document.querySelectorAll('.nav-item').forEach(el => {
+                        el.classList.remove('text-emerald-600');
+                        el.classList.add('text-slate-400');
+                        el.querySelector('.material-symbols-outlined').classList.remove('text-[26px]', 'text-[28px]');
+                    });
+                    navElement.classList.remove('text-slate-400');
+                    navElement.classList.add('text-emerald-600');
+                    
+                    if(navElement.id === 'nav-dispense') {
+                        navElement.querySelector('.material-symbols-outlined').classList.add('text-[26px]');
+                    }
+                }
+            } else {
+                bottomNav.classList.add('hidden');
+                bottomNav.classList.remove('flex');
+            }
+        }
+
+        // Init App
+        document.addEventListener('DOMContentLoaded', () => {
+            const options = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
+            document.getElementById('dash-date').innerText = new Date().toLocaleDateString('en-US', options);
+            initDatabase();
+        });
+    </script>
+</body>
+</html>
