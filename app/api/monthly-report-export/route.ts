@@ -13,6 +13,7 @@ import {
   getMonthlyProductReport,
   getProductMonthlySeries,
   type LedgerKind,
+  type YearScope,
 } from "@/services/monthlyReportService";
 
 export const runtime = "nodejs";
@@ -57,10 +58,13 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const scope = sp.get("scope") ?? "year";
   const kind: LedgerKind = sp.get("kind") === "main" ? "main" : "pharmacy";
-  const year = Number(sp.get("year")) || new Date().getFullYear();
+  const yearParam = sp.get("year");
+  const yearScope: YearScope = yearParam === "all" ? "all" : (Number(yearParam) || new Date().getFullYear());
+  const year = typeof yearScope === "number" ? yearScope : new Date().getFullYear();
   const month = Number(sp.get("month")) || 1;
   const productId = sp.get("productId") ?? "";
   const kindLabel = kind === "main" ? "Main Stock" : "Pharmacy";
+  const scopeLabel = yearScope === "all" ? "AllMonths" : String(yearScope);
 
   try {
     const products = sortProducts(
@@ -77,21 +81,21 @@ export async function GET(req: NextRequest) {
     wb.creator = "PharmaTrack";
     let filename = "";
 
-    // ── Year, all products ───────────────────────────────────────────────
+    // ── Year / All-Months, all products ──────────────────────────────────
     if (scope === "year") {
-      const data = await getAllProductsYearReport(kind, year);
+      const data = await getAllProductsYearReport(kind, yearScope);
       const byId = new Map(data.map((d) => [d.productId, d.months]));
 
-      // Sheet 1: year summary (one row per product)
-      const sum = wb.addWorksheet("Year Summary");
+      // Sheet 1: summary (one row per product)
+      const sum = wb.addWorksheet(yearScope === "all" ? "All-Time Summary" : "Year Summary");
       sum.columns = [
         { header: "Brand", key: "brand", width: 28 },
         { header: "Generic", key: "generic", width: 28 },
         { header: "Unit", key: "unit", width: 10 },
-        { header: `Opening (1 Jan ${year})`, key: "opening", width: 18 },
+        { header: yearScope === "all" ? "Opening" : `Opening (1 Jan ${yearScope})`, key: "opening", width: 18 },
         { header: "Total IN", key: "in", width: 12 },
         { header: "Total OUT", key: "out", width: 12 },
-        { header: `Closing (31 Dec ${year})`, key: "closing", width: 18 },
+        { header: yearScope === "all" ? "Closing" : `Closing (31 Dec ${yearScope})`, key: "closing", width: 18 },
       ];
       styleHeader(sum.getRow(1));
       numCols(sum, 4, 7);
@@ -103,7 +107,7 @@ export async function GET(req: NextRequest) {
         { header: "Brand", key: "brand", width: 28 },
         { header: "Generic", key: "generic", width: 28 },
         { header: "Unit", key: "unit", width: 10 },
-        { header: "Month", key: "month", width: 14 },
+        { header: "Month", key: "month", width: 16 },
         { header: "Opening", key: "opening", width: 12 },
         { header: "IN", key: "in", width: 12 },
         { header: "OUT", key: "out", width: 12 },
@@ -115,25 +119,25 @@ export async function GET(req: NextRequest) {
 
       for (const p of products) {
         const months = byId.get(p.id);
-        if (!months) continue;
+        if (!months || months.length === 0) continue;
         const tin = months.reduce((s, m) => s + m.in, 0);
         const tout = months.reduce((s, m) => s + m.out, 0);
-        if (months[0].opening === 0 && tin === 0 && tout === 0) continue; // inactive all year
+        if (months[0].opening === 0 && tin === 0 && tout === 0) continue; // inactive
         sum.addRow({
           brand: p.brandName, generic: p.genericName, unit: p.unit,
-          opening: months[0].opening, in: tin, out: tout, closing: months[11].closing,
+          opening: months[0].opening, in: tin, out: tout, closing: months[months.length - 1].closing,
         });
         months.forEach((m) =>
           det.addRow({
             brand: p.brandName, generic: p.genericName, unit: p.unit,
-            month: `${MONTHS[m.month - 1]} ${year}`,
+            month: `${MONTHS[m.month - 1]} ${m.year}`,
             opening: m.opening, in: m.in, out: m.out, closing: m.closing,
           })
         );
       }
       det.autoFilter = { from: "A1", to: "H1" };
       sum.autoFilter = { from: "A1", to: "G1" };
-      filename = `PharmaTrack-${kindLabel.replace(" ", "")}-${year}-monthly-report.xlsx`;
+      filename = `PharmaTrack-${kindLabel.replace(" ", "")}-${scopeLabel}-monthly-report.xlsx`;
     }
 
     // ── One month, all products ──────────────────────────────────────────
@@ -167,13 +171,14 @@ export async function GET(req: NextRequest) {
       filename = `PharmaTrack-${kindLabel.replace(" ", "")}-${year}-${String(month).padStart(2, "0")}-report.xlsx`;
     }
 
-    // ── One product, 12 months ───────────────────────────────────────────
+    // ── One product, 12 months or all months ─────────────────────────────
     else if (scope === "product") {
       const p = products.find((x) => x.id === productId);
       if (!p) return NextResponse.json({ error: "Product not found" }, { status: 404 });
-      const months = await getProductMonthlySeries(productId, kind, year);
-      const sheet = wb.addWorksheet(`${year}`);
-      sheet.addRow([`${p.brandName} — ${p.genericName} (${p.unit}) · ${kindLabel} · ${year}`]).font = { bold: true, size: 12 };
+      const months = await getProductMonthlySeries(productId, kind, yearScope);
+      const sheetTitle = yearScope === "all" ? "All Months" : `${yearScope}`;
+      const sheet = wb.addWorksheet(sheetTitle);
+      sheet.addRow([`${p.brandName} — ${p.genericName} (${p.unit}) · ${kindLabel} · ${sheetTitle}`]).font = { bold: true, size: 12 };
       sheet.addRow([]);
       sheet.columns = [
         { key: "month", width: 18 }, { key: "opening", width: 12 },
@@ -181,16 +186,16 @@ export async function GET(req: NextRequest) {
       ];
       styleHeader(sheet.addRow(["Month", "Opening", "IN", "OUT", "Balance"]));
       months.forEach((m) =>
-        sheet.addRow([`${MONTHS[m.month - 1]} ${year}`, m.opening, m.in, m.out, m.closing])
+        sheet.addRow([`${MONTHS[m.month - 1]} ${m.year}`, m.opening, m.in, m.out, m.closing])
       );
       styleTotal(sheet.addRow([
-        "Total", months[0].opening,
+        "Total", months[0]?.opening ?? 0,
         months.reduce((s, m) => s + m.in, 0),
         months.reduce((s, m) => s + m.out, 0),
-        months[11].closing,
+        months.length ? months[months.length - 1].closing : 0,
       ]));
       numCols(sheet, 2, 5);
-      filename = `${p.brandName.replace(/[^a-zA-Z0-9]/g, "-")}-${kindLabel.replace(" ", "")}-${year}-monthly.xlsx`;
+      filename = `${p.brandName.replace(/[^a-zA-Z0-9]/g, "-")}-${kindLabel.replace(" ", "")}-${scopeLabel}-monthly.xlsx`;
     } else {
       return NextResponse.json({ error: "Invalid scope" }, { status: 400 });
     }

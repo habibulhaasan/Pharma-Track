@@ -9,8 +9,10 @@ import { getAdminDb } from "@/lib/firebaseAdmin";
 import { Timestamp } from "firebase-admin/firestore";
 
 export type LedgerKind = "main" | "pharmacy";
+export type YearScope = number | "all";
 
 export interface ProductMonthRow {
+  year: number;
   month: number;      // 1–12
   opening: number;
   in: number;
@@ -47,14 +49,66 @@ function tsMillis(ts: any): number {
   return new Date(ts).getTime();
 }
 
-/** One product → 12 months of opening / IN / OUT / closing for a year. */
+/** One product → monthly opening / IN / OUT / closing for a specific year or all months. */
 export async function getProductMonthlySeries(
   productId: string,
   kind: LedgerKind,
-  year: number
+  year: YearScope
 ): Promise<ProductMonthRow[]> {
   const db = getAdminDb();
   const { stock, ledger } = names(kind);
+
+  if (year === "all") {
+    const snap = await db
+      .collection(stock)
+      .doc(productId)
+      .collection(ledger)
+      .select("type", "quantity", "adjustmentDelta", "timestamp")
+      .get();
+
+    const now = new Date();
+    const curYear = now.getUTCFullYear();
+    const curYm = curYear * 12 + now.getUTCMonth();
+
+    let opening = 0;
+    let minYm = Infinity;
+    let maxYm = -Infinity;
+    const ins: Record<number, number> = {};
+    const outs: Record<number, number> = {};
+
+    snap.docs.forEach((doc) => {
+      const data = doc.data();
+      const t = tsMillis(data.timestamp);
+      const dl = delta(data);
+      if (t <= 0) {
+        opening += dl;
+      } else {
+        const d = new Date(t);
+        const ym = d.getUTCFullYear() * 12 + d.getUTCMonth();
+        if (ym < minYm) minYm = ym;
+        if (ym > maxYm) maxYm = ym;
+        if (dl > 0) ins[ym] = (ins[ym] ?? 0) + dl;
+        else outs[ym] = (outs[ym] ?? 0) + Math.abs(dl);
+      }
+    });
+
+    const startYm = minYm === Infinity ? curYear * 12 : minYm;
+    const endYm = minYm === Infinity ? curYm : Math.max(maxYm, curYm);
+
+    const rows: ProductMonthRow[] = [];
+    let running = opening;
+    for (let ym = startYm; ym <= endYm; ym++) {
+      const y = Math.floor(ym / 12);
+      const m = (ym % 12) + 1;
+      const open = running;
+      const inQty = ins[ym] ?? 0;
+      const outQty = outs[ym] ?? 0;
+      running = open + inQty - outQty;
+      rows.push({ year: y, month: m, opening: open, in: inQty, out: outQty, closing: running });
+    }
+    return rows;
+  }
+
   const yearEnd = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0));
 
   // Single-field range on a subcollection → no composite index needed
@@ -88,7 +142,7 @@ export async function getProductMonthlySeries(
   for (let m = 0; m < 12; m++) {
     const open = running;
     running = open + ins[m] - outs[m];
-    rows.push({ month: m + 1, opening: open, in: ins[m], out: outs[m], closing: running });
+    rows.push({ year, month: m + 1, opening: open, in: ins[m], out: outs[m], closing: running });
   }
   return rows;
 }
@@ -146,23 +200,77 @@ export async function getMonthlyProductReport(
 
 export interface YearProductRow {
   productId: string;
-  months: ProductMonthRow[]; // 12 entries
+  months: ProductMonthRow[];
 }
 
-/** All products → 12 months each for a year. One collection-group read. */
+/** All products → monthly series each for a specific year or all months. One collection-group read. */
 export async function getAllProductsYearReport(
   kind: LedgerKind,
-  year: number
+  year: YearScope
 ): Promise<YearProductRow[]> {
   const db = getAdminDb();
   const { ledger } = names(kind);
-  const yearStart = Date.UTC(year, 0, 1);
-  const yearEnd = Date.UTC(year + 1, 0, 1);
 
   const snap = await db
     .collectionGroup(ledger)
     .select("type", "quantity", "adjustmentDelta", "timestamp")
     .get();
+
+  if (year === "all") {
+    const now = new Date();
+    const curYear = now.getUTCFullYear();
+    const curYm = curYear * 12 + now.getUTCMonth();
+
+    const agg: Record<
+      string,
+      { opening: number; minYm: number; maxYm: number; ins: Record<number, number>; outs: Record<number, number> }
+    > = {};
+
+    snap.docs.forEach((doc) => {
+      const productId = doc.ref.parent.parent?.id;
+      if (!productId) return;
+      const data = doc.data();
+      const t = tsMillis(data.timestamp);
+      const dl = delta(data);
+      const a = (agg[productId] ??= {
+        opening: 0,
+        minYm: Infinity,
+        maxYm: -Infinity,
+        ins: {},
+        outs: {},
+      });
+      if (t <= 0) {
+        a.opening += dl;
+      } else {
+        const d = new Date(t);
+        const ym = d.getUTCFullYear() * 12 + d.getUTCMonth();
+        if (ym < a.minYm) a.minYm = ym;
+        if (ym > a.maxYm) a.maxYm = ym;
+        if (dl > 0) a.ins[ym] = (a.ins[ym] ?? 0) + dl;
+        else a.outs[ym] = (a.outs[ym] ?? 0) + Math.abs(dl);
+      }
+    });
+
+    return Object.entries(agg).map(([productId, a]) => {
+      const startYm = a.minYm === Infinity ? curYear * 12 : a.minYm;
+      const endYm = a.minYm === Infinity ? curYm : Math.max(a.maxYm, curYm);
+      let running = a.opening;
+      const months: ProductMonthRow[] = [];
+      for (let ym = startYm; ym <= endYm; ym++) {
+        const y = Math.floor(ym / 12);
+        const m = (ym % 12) + 1;
+        const open = running;
+        const inQty = a.ins[ym] ?? 0;
+        const outQty = a.outs[ym] ?? 0;
+        running = open + inQty - outQty;
+        months.push({ year: y, month: m, opening: open, in: inQty, out: outQty, closing: running });
+      }
+      return { productId, months };
+    });
+  }
+
+  const yearStart = Date.UTC(year, 0, 1);
+  const yearEnd = Date.UTC(year + 1, 0, 1);
 
   const agg: Record<string, { opening: number; ins: number[]; outs: number[] }> = {};
 
@@ -188,7 +296,7 @@ export async function getAllProductsYearReport(
     for (let m = 0; m < 12; m++) {
       const open = running;
       running = open + a.ins[m] - a.outs[m];
-      months.push({ month: m + 1, opening: open, in: a.ins[m], out: a.outs[m], closing: running });
+      months.push({ year, month: m + 1, opening: open, in: a.ins[m], out: a.outs[m], closing: running });
     }
     return { productId, months };
   });

@@ -6,12 +6,13 @@ import {
   getMonthlyProductReport,
   getAllProductsYearReport,
   type LedgerKind,
+  type YearScope,
 } from "@/services/monthlyReportService";
 
 export async function getProductMonthlySeriesAction(
   productId: string,
   kind: LedgerKind,
-  year: number
+  year: YearScope
 ) {
   await requireAuth();
   try {
@@ -36,7 +37,7 @@ export async function getMonthlyProductReportAction(
   }
 }
 
-export async function getAllProductsYearReportAction(kind: LedgerKind, year: number) {
+export async function getAllProductsYearReportAction(kind: LedgerKind, year: YearScope) {
   await requireAuth();
   try {
     return { success: true as const, data: await getAllProductsYearReport(kind, year) };

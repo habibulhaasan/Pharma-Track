@@ -11,6 +11,8 @@ import {
   getAllProductsYearReportAction,
 } from "@/app/actions/monthlyReport";
 
+type YearScope = number | "all";
+
 interface Product {
   id: string;
   genericName: string;
@@ -18,7 +20,14 @@ interface Product {
   unit: string;
   type: string;
 }
-interface ProductMonthRow { month: number; opening: number; in: number; out: number; closing: number }
+interface ProductMonthRow {
+  year: number;
+  month: number;
+  opening: number;
+  in: number;
+  out: number;
+  closing: number;
+}
 interface MonthlyProductRow {
   productId: string; opening: number; in: number; out: number; closing: number; remaining: number;
 }
@@ -48,10 +57,11 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
   const currentYear = now.getFullYear();
   const years = Array.from({ length: currentYear - 2023 }, (_, i) => currentYear - i);
 
-  const [mode, setMode]     = useState<Mode>("month");
-  const [kind, setKind]     = useState<Kind>("pharmacy");
-  const [year, setYear]     = useState(currentYear);
-  const [month, setMonth]   = useState(now.getMonth() + 1);
+  const [mode, setMode]         = useState<Mode>("month");
+  const [kind, setKind]         = useState<Kind>("pharmacy");
+  const [year, setYear]         = useState(currentYear);
+  const [allMonths, setAllMonths] = useState(true); // default in Product by Months: All Months
+  const [month, setMonth]       = useState(now.getMonth() + 1);
   const [selected, setSelected] = useState<Product | null>(null);
 
   const [series, setSeries]   = useState<ProductMonthRow[]>([]);
@@ -59,21 +69,23 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
   const [error, setError]     = useState("");
   const [loading, startTransition] = useTransition();
 
-  const [search, setSearch]       = useState("");
+  const [search, setSearch]         = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [hideInactive, setHideInactive] = useState(true);
   const [dlMenu, setDlMenu] = useState(false);
-  const [busy, setBusy] = useState<"" | "pdf" | "xlsx-year" | "xlsx-view">("");
+  const [busy, setBusy] = useState<"" | "pdf-all" | "pdf-product" | "xlsx-year" | "xlsx-view">("");
+  const [rowPdfId, setRowPdfId] = useState<string>("");
 
-  const productMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  const activeProductScope: YearScope = allMonths ? "all" : year;
 
   // ── Fetch ──────────────────────────────────────────────────────────────
   useEffect(() => {
     setError("");
     if (mode === "product") {
       if (!selected) { setSeries([]); return; }
+      const scope: YearScope = allMonths ? "all" : year;
       startTransition(async () => {
-        const res = await getProductMonthlySeriesAction(selected.id, kind, year);
+        const res = await getProductMonthlySeriesAction(selected.id, kind, scope);
         if (res.success) setSeries(res.data); else { setSeries([]); setError(res.error); }
       });
     } else {
@@ -82,7 +94,7 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
         if (res.success) setReport(res.data); else { setReport([]); setError(res.error); }
       });
     }
-  }, [mode, kind, year, month, selected]);
+  }, [mode, kind, year, allMonths, month, selected]);
 
   // ── Derived: product-by-months ─────────────────────────────────────────
   const seriesIn  = series.reduce((s, r) => s + r.in, 0);
@@ -121,9 +133,10 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
   function exportCSV() {
     const label = kind === "main" ? "Main" : "Pharmacy";
     if (mode === "product" && selected) {
-      downloadCSV(`${selected.brandName}-${year}-${label}-monthly.csv`, [
+      const scopeTag = allMonths ? "AllMonths" : String(year);
+      downloadCSV(`${selected.brandName}-${scopeTag}-${label}-monthly.csv`, [
         ["Month", "Opening", "IN", "OUT", "Balance"],
-        ...series.map((r) => [`${MONTHS[r.month - 1]} ${year}`, r.opening, r.in, r.out, r.closing]),
+        ...series.map((r) => [`${MONTHS[r.month - 1]} ${r.year}`, r.opening, r.in, r.out, r.closing]),
         ["Total", seriesOpening, seriesIn, seriesOut, seriesClosing],
       ]);
     } else if (mode === "month") {
@@ -135,25 +148,76 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
     }
   }
 
-  // ── Full-year PDF: every product, 12 months each ───────────────────────
-  async function downloadYearPDF() {
+  // ── Single-product PDF (for all months or a specific year) ─────────────
+  async function downloadProductPDF(targetProduct: Product | null, scope: YearScope, fromRow = false) {
     setDlMenu(false);
-    setBusy("pdf");
+    if (!targetProduct) {
+      // Guide user directly to select a product in Product by Months mode
+      setMode("product");
+      setAllMonths(scope === "all");
+      if (typeof scope === "number") setYear(scope);
+      setPickerOpen(true);
+      return;
+    }
+
+    setBusy("pdf-product");
+    if (fromRow) setRowPdfId(targetProduct.id);
     try {
-      const res = await getAllProductsYearReportAction(kind, year);
+      let months: ProductMonthRow[];
+      const canReuseLoaded =
+        mode === "product" &&
+        selected?.id === targetProduct.id &&
+        activeProductScope === scope &&
+        series.length > 0 &&
+        !loading;
+
+      if (canReuseLoaded) {
+        months = series;
+      } else {
+        const res = await getProductMonthlySeriesAction(targetProduct.id, kind, scope);
+        if (!res.success) { alert(res.error); return; }
+        months = res.data;
+      }
+
+      const { downloadProductMonthlyPDF } = await import("@/lib/monthly-report-pdf");
+      await downloadProductMonthlyPDF({
+        kind,
+        year: scope,
+        product: {
+          brandName: targetProduct.brandName,
+          genericName: targetProduct.genericName,
+          unit: targetProduct.unit,
+          months,
+        },
+      });
+    } catch (err) {
+      console.error(err);
+      alert(`PDF export failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy("");
+      setRowPdfId("");
+    }
+  }
+
+  // ── All-products PDF: strictly ONE product per page ────────────────────
+  async function downloadYearPDF(scope: YearScope) {
+    setDlMenu(false);
+    setBusy("pdf-all");
+    try {
+      const res = await getAllProductsYearReportAction(kind, scope);
       if (!res.success) { alert(res.error); return; }
       const byId = new Map(res.data.map((d) => [d.productId, d.months]));
       const pdfProducts = products
         .map((p) => ({ p, months: byId.get(p.id) }))
         .filter((x): x is { p: Product; months: ProductMonthRow[] } => {
-          if (!x.months) return false;
+          if (!x.months || x.months.length === 0) return false;
           const tin = x.months.reduce((a, m) => a + m.in, 0);
           const tout = x.months.reduce((a, m) => a + m.out, 0);
           return !(x.months[0].opening === 0 && tin === 0 && tout === 0); // skip fully inactive
         })
         .map(({ p, months }) => ({ brandName: p.brandName, genericName: p.genericName, unit: p.unit, months }));
       const { downloadYearReportPDF } = await import("@/lib/monthly-report-pdf");
-      await downloadYearReportPDF({ kind, year, products: pdfProducts });
+      await downloadYearReportPDF({ kind, year: scope, products: pdfProducts });
     } catch (err) {
       console.error(err);
       alert(`PDF export failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -162,14 +226,15 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
     }
   }
 
-  // ── Excel: whole year, or whatever is on screen ────────────────────────
-  async function downloadXlsx(scope: "year" | "view") {
+  // ── Excel: whole year / all months, or whatever is on screen ───────────
+  async function downloadXlsx(scope: "year" | "view", yearOverride?: YearScope) {
     setDlMenu(false);
     setBusy(scope === "year" ? "xlsx-year" : "xlsx-view");
     try {
-      const qs = new URLSearchParams({ kind, year: String(year) });
+      const targetYear = yearOverride ?? (mode === "product" ? activeProductScope : year);
+      const qs = new URLSearchParams({ kind, year: String(targetYear) });
       if (scope === "year") qs.set("scope", "year");
-      else if (mode === "month") { qs.set("scope", "month"); qs.set("month", String(month)); }
+      else if (mode === "month") { qs.set("scope", "month"); qs.set("month", String(month)); qs.set("year", String(year)); }
       else { qs.set("scope", "product"); qs.set("productId", selected!.id); }
 
       const res = await fetch(`/api/monthly-report-export?${qs}`);
@@ -229,14 +294,28 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
             </button>
           </div>
 
-          {mode === "month" && (
-            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className={selectCls}>
-              {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+          {mode === "month" ? (
+            <>
+              <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className={selectCls}>
+                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+              </select>
+              <select value={year} onChange={(e) => setYear(Number(e.target.value))} className={selectCls}>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </>
+          ) : (
+            <select
+              value={allMonths ? "all" : String(year)}
+              onChange={(e) => {
+                if (e.target.value === "all") setAllMonths(true);
+                else { setAllMonths(false); setYear(Number(e.target.value)); }
+              }}
+              className={selectCls}
+            >
+              <option value="all">All Months (All Time)</option>
+              {years.map((y) => <option key={y} value={y}>{y} (Jan–Dec)</option>)}
             </select>
           )}
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))} className={selectCls}>
-            {years.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
 
           <div className="ml-auto relative">
             <button onClick={() => setDlMenu((v) => !v)} disabled={!!busy}
@@ -248,21 +327,51 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
             {dlMenu && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setDlMenu(false)} />
-                <div className="absolute right-0 top-full mt-1 z-20 w-64 rounded-md border bg-card shadow-lg overflow-hidden">
-                  <button onClick={downloadYearPDF}
+                <div className="absolute right-0 top-full mt-1 z-20 w-72 rounded-md border bg-card shadow-lg overflow-hidden">
+                  <button onClick={() => downloadProductPDF(selected, "all")}
+                    className="w-full flex items-start gap-2 text-left px-3 py-2.5 text-xs hover:bg-muted/50 border-b">
+                    <FileText className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>
+                      <span className="block font-medium">PDF — by product, all months</span>
+                      <span className="block text-muted-foreground text-[10px] mt-0.5">
+                        {selected ? `${selected.brandName} · all months across all years` : "Choose a product · all months"}
+                      </span>
+                    </span>
+                  </button>
+                  <button onClick={() => downloadProductPDF(selected, year)}
+                    className="w-full flex items-start gap-2 text-left px-3 py-2.5 text-xs hover:bg-muted/50 border-b">
+                    <FileText className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>
+                      <span className="block font-medium">PDF — by product, {year}</span>
+                      <span className="block text-muted-foreground text-[10px] mt-0.5">
+                        {selected ? `${selected.brandName} · 12 months of ${year}` : `Choose a product · 12 months of ${year}`}
+                      </span>
+                    </span>
+                  </button>
+                  <button onClick={() => downloadYearPDF("all")}
+                    className="w-full flex items-start gap-2 text-left px-3 py-2.5 text-xs hover:bg-muted/50 border-b">
+                    <FileText className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>
+                      <span className="block font-medium">PDF — all products, all months</span>
+                      <span className="block text-muted-foreground text-[10px] mt-0.5">One product per page · all months</span>
+                    </span>
+                  </button>
+                  <button onClick={() => downloadYearPDF(year)}
                     className="w-full flex items-start gap-2 text-left px-3 py-2.5 text-xs hover:bg-muted/50 border-b">
                     <FileText className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     <span>
                       <span className="block font-medium">PDF — all products, {year}</span>
-                      <span className="block text-muted-foreground text-[10px] mt-0.5">One report, 12 months per product</span>
+                      <span className="block text-muted-foreground text-[10px] mt-0.5">One product per page · 12 months each</span>
                     </span>
                   </button>
-                  <button onClick={() => downloadXlsx("year")}
+                  <button onClick={() => downloadXlsx("year", mode === "product" && allMonths ? "all" : year)}
                     className="w-full flex items-start gap-2 text-left px-3 py-2.5 text-xs hover:bg-muted/50 border-b">
                     <FileSpreadsheet className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     <span>
-                      <span className="block font-medium">Excel — all products, {year}</span>
-                      <span className="block text-muted-foreground text-[10px] mt-0.5">Year summary + monthly detail sheets</span>
+                      <span className="block font-medium">
+                        Excel — all products, {mode === "product" && allMonths ? "all months" : year}
+                      </span>
+                      <span className="block text-muted-foreground text-[10px] mt-0.5">Summary + monthly detail sheets</span>
                     </span>
                   </button>
                   <button onClick={() => downloadXlsx("view")} disabled={!canExport}
@@ -271,7 +380,11 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
                     <span>
                       <span className="block font-medium">Excel — current view</span>
                       <span className="block text-muted-foreground text-[10px] mt-0.5">
-                        {mode === "month" ? `${MONTHS[month - 1]} ${year}, all products` : selected ? `${selected.brandName}, ${year}` : "Select a product first"}
+                        {mode === "month"
+                          ? `${MONTHS[month - 1]} ${year}, all products`
+                          : selected
+                            ? `${selected.brandName}, ${allMonths ? "all months" : year}`
+                            : "Select a product first"}
                       </span>
                     </span>
                   </button>
@@ -353,7 +466,7 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
               <div className="min-w-0 flex-1">
                 <h3 className="text-sm font-semibold truncate">{selected!.brandName}</h3>
                 <p className="text-xs text-muted-foreground">
-                  {selected!.genericName} · {selected!.unit} · {year} · {kind === "main" ? "Main Stock" : "Pharmacy"}
+                  {selected!.genericName} · {selected!.unit} · {allMonths ? "All Months" : year} · {kind === "main" ? "Main Stock" : "Pharmacy"}
                 </p>
               </div>
               <span className="flex items-center gap-1 rounded-full bg-success/10 border border-success/20 px-2.5 py-0.5 text-[11px] font-medium text-success">
@@ -362,6 +475,18 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
               <span className="flex items-center gap-1 rounded-full bg-destructive/10 border border-destructive/20 px-2.5 py-0.5 text-[11px] font-medium text-destructive">
                 <TrendingDown className="h-3 w-3" />OUT: {n(seriesOut)}
               </span>
+              <button
+                onClick={() => downloadProductPDF(selected, activeProductScope)}
+                disabled={!!busy || series.length === 0}
+                className="flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted/50 transition-colors disabled:opacity-50"
+              >
+                {busy === "pdf-product" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                )}
+                PDF ({allMonths ? "All Months" : year})
+              </button>
             </div>
             <div className="overflow-auto scrollbar-thin">
               <table className="w-full text-sm">
@@ -376,10 +501,10 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
                 </thead>
                 <tbody>
                   {series.map((r) => {
-                    const future = year === currentYear && r.month > now.getMonth() + 1;
+                    const future = r.year === currentYear && r.month > now.getMonth() + 1;
                     return (
-                      <tr key={r.month} className={`border-b hover:bg-muted/20 transition-colors ${future ? "opacity-40" : ""}`}>
-                        <td className="px-3 py-2.5 text-xs font-medium">{MONTHS[r.month - 1]} {year}</td>
+                      <tr key={`${r.year}-${r.month}`} className={`border-b hover:bg-muted/20 transition-colors ${future ? "opacity-40" : ""}`}>
+                        <td className="px-3 py-2.5 text-xs font-medium">{MONTHS[r.month - 1]} {r.year}</td>
                         <td className="px-3 py-2.5 text-right text-xs tabular-nums text-muted-foreground">{n(r.opening)}</td>
                         <td className="px-3 py-2.5 text-right text-xs tabular-nums">
                           {r.in > 0 ? <span className="font-semibold text-success">+{n(r.in)}</span> : <span className="text-muted-foreground">—</span>}
@@ -394,7 +519,9 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 bg-muted/40">
-                    <td className="px-3 py-2.5 text-xs font-semibold uppercase text-muted-foreground">Total {year}</td>
+                    <td className="px-3 py-2.5 text-xs font-semibold uppercase text-muted-foreground">
+                      {allMonths ? "Total (All Months)" : `Total ${year}`}
+                    </td>
                     <td className="px-3 py-2.5 text-right text-xs font-bold tabular-nums">{n(seriesOpening)}</td>
                     <td className="px-3 py-2.5 text-right text-xs font-bold text-success tabular-nums">+{n(seriesIn)}</td>
                     <td className="px-3 py-2.5 text-right text-xs font-bold text-destructive tabular-nums">−{n(seriesOut)}</td>
@@ -423,6 +550,7 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
                       <th className="px-3 py-2.5 text-right text-xs font-semibold text-destructive uppercase">OUT</th>
                       <th className="px-3 py-2.5 text-right text-xs font-semibold text-muted-foreground uppercase">Closing</th>
                       <th className="px-3 py-2.5 text-right text-xs font-semibold text-muted-foreground uppercase" title="Current live stock">Remaining</th>
+                      <th className="px-3 py-2.5 text-right text-xs font-semibold text-muted-foreground uppercase w-16">PDF</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -441,6 +569,20 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
                         </td>
                         <td className={`px-3 py-2 text-right text-xs font-bold tabular-nums ${r.closing > 0 ? "" : "text-destructive"}`}>{n(r.closing)}</td>
                         <td className="px-3 py-2 text-right text-xs tabular-nums text-muted-foreground">{n(r.remaining)}</td>
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            onClick={() => downloadProductPDF(r.product, "all", true)}
+                            disabled={!!busy}
+                            title={`Download all-months PDF for ${r.product.brandName}`}
+                            className="inline-flex items-center justify-center rounded-md border border-input bg-background p-1.5 text-xs hover:bg-muted/50 transition-colors disabled:opacity-40"
+                          >
+                            {rowPdfId === r.product.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                            ) : (
+                              <FileText className="h-3.5 w-3.5 text-primary" />
+                            )}
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -452,6 +594,7 @@ export function MonthlyReportClient({ products }: { products: Product[] }) {
                       <td className="px-3 py-2.5 text-right text-xs font-bold text-destructive tabular-nums">−{n(tot.out)}</td>
                       <td className="px-3 py-2.5 text-right text-xs font-bold tabular-nums">{n(tot.closing)}</td>
                       <td className="px-3 py-2.5 text-right text-xs font-bold tabular-nums">{n(tot.remaining)}</td>
+                      <td />
                     </tr>
                   </tfoot>
                 </table>
